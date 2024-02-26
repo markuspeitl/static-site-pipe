@@ -282,3 +282,16 @@ Adding (template) content passed from the parent also has a lot of additional in
 
 Transpiling nunchucks, liquid, or other templating languages to these component
 is possible
+
+
+# Processing graph
+1. Input
+    - directories to process
+    - files to process
+    - contents to process
+
+
+Examples:
+1. directories to process
+2. Merge directories = single input directory
+3. 
