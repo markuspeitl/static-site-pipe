@@ -4,19 +4,93 @@ import { ArrayAndNull, Nullable, NullableArray, NullableString } from './util';
 const basePipelineOptions: PipeLineGraph = {
     dir: {
         id: 'dir',
-        isTargetOf: () => true,
+        isTargetOf: async () => true,
         process: () => ''
     },
     file: {
         id: 'file',
-        isTargetOf: () => true,
+        isTargetOf: async () => true,
         process: () => ''
     },
     template: {
         id: 'template',
-        isTargetOf: () => true,
+        isTargetOf: async () => true,
         process: () => ''
     }
+};
+
+
+const pipeLineGraphEdges: Record<string, any> = {
+    subchain: {},
+    branches: {
+        dir: {
+            subchain: {
+                walkDir: null, // For now any pipelines/fns of the subchain/branches must have a unique name
+                printDirFiles: null, //Disallow duplicates while registering (when wanting to modify behaviour you can always manually add a namespace, 
+                filterIgnoredFiles: { //or replace existing with a combined pipeline which has the previous pipeline and the new pipeline as stages)
+                    //next: 'exitparent' //removed as this would ignore all files of the dir
+                },
+            },
+            branches: null,
+            next: 'file' || 'default'
+        },
+        //changed watched files would be reemitted here (no need to handle dir changes, -> if a dir is renamed -> its contents change)
+        file: {
+            subchain: {
+                printFile: null,
+                copyAsset: {
+                    next: 'exitparent' // --> parent == file -> end main processing pipeline
+                },
+                readFile: null,
+                writeAsset: {
+                    next: 'exitparent'
+                },
+            },
+            //Branches do all get passed the same data from parent pipeline and are activated if they are enabled (through isTargetOf)
+            branches: null,
+            next: 'template' || 'default'
+        },
+        template: {
+            subchain: {
+                printTemplate: null,
+                //parseTemplate: {}
+                preParseTransform: null
+            },
+            //branches get passed the data coming out of the subchain
+            branches: {
+                markdown: {
+                    next: 'default' || 'exitparent' // Branch behaviours: find first, process + exit, find first, process + pass to next match
+                },
+                typescript: {
+                    next: 'default' || 'exitparent'
+                },
+                liquid: {
+                    next: 'default' || 'exitparent'
+                },
+                nunjucks: {
+                    next: 'default' || 'exitparent'
+                }
+            },
+            next: 'compiled'
+        },
+        compiled: {
+            branches: {
+                minify: {
+                    branches: {
+                        cssMinify: {
+                            next: 'default' || 'exitparent',
+                        },
+                        htmlMinify: {
+                            next: 'default' || 'exitparent',
+                        }
+                    }
+                }
+            },
+            next: 'writeCompiled'
+        },
+        writeCompiled: {}
+    },
+    next: null,
 };
 
 
