@@ -1,6 +1,7 @@
+import { NullableString } from './util';
 import * as path from 'path';
 import * as fs from 'fs';
-import { NullableString } from './util';
+
 
 
 export async function* walk(dir) {
