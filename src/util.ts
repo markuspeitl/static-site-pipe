@@ -41,7 +41,7 @@ export async function multiplyIfArrayAsync(fn, targetArg: any | any[], ...option
     //fn.apply(null, targetArg)
 }
 
-//async function processPipelineStages()
+//async function processPipeLineStages()
 
 export function mergePropsToArray(dict: Object, keys: string[]): any[] {
     let collectedArray: any[] = [];
@@ -67,4 +67,34 @@ export function mergePropsToArray(dict: Object, keys: string[]): any[] {
     }
 
     return collectedArray;
+}
+
+
+export function isTypeOrItemType(value: any | any[], matchType: string): boolean {
+    let foundDefined = undefined;
+
+    if (Array.isArray(value)) {
+
+        for (const elem of value) {
+            if (elem !== undefined) {
+                foundDefined = elem;
+            }
+            else if (matchType === 'undefined') {
+                return true;
+            }
+
+            if (foundDefined) {
+                break;
+            }
+        }
+    }
+    else {
+        foundDefined = value;
+    }
+
+    if (foundDefined && typeof value === matchType) {
+        return true;
+    }
+
+    return false;
 }

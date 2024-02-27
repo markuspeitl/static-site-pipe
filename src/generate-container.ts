@@ -3,8 +3,8 @@ import { ArgumentParser } from 'argparse';
 export interface IContainerGenerator {
     render: (inputPath: string) => string;
 }
-export interface IProcessingPipeline {
-    getStages(): IPipelineStage[];
+export interface PipeLine {
+    getStages(): IPipeLineStage[];
 }
 
 

@@ -1,11 +1,11 @@
-import { IProcessingPipeline } from "./processing-pipeline";
+import { PipeLine } from "./processing-pipeline";
 
 
 const pipeLineStore = {
 
 };
 
-export function getPipeline(id: string): IProcessingPipeline {
+export function getPipeLine(id: string): PipeLine {
 
     if (!pipeLineStore[ id ]) {
 
@@ -15,7 +15,7 @@ export function getPipeline(id: string): IProcessingPipeline {
     return pipeLineStore[ id ];
 }
 
-export function addPipeline(pipeLine: IProcessingPipeline, id?: string): string {
+export function addPipeLine(pipeLine: PipeLine, id?: string): string {
 
     if (id) {
         pipeLine.id = id;
@@ -23,7 +23,7 @@ export function addPipeline(pipeLine: IProcessingPipeline, id?: string): string 
     id = pipeLine.id;
 
     if (!id) {
-        throw new Error("No id set on pipeline and no id passed to 'addPipeline', id is required");
+        throw new Error("No id set on pipeline and no id passed to 'addPipeLine', id is required");
     }
 
     if (pipeLineStore[ id ]) {
@@ -33,4 +33,12 @@ export function addPipeline(pipeLine: IProcessingPipeline, id?: string): string 
 
     pipeLineStore[ id ] = pipeLine;
     return id;
+}
+
+export function getNewPipeLine(id: string): PipeLine {
+    return {
+        id: id,
+        isTargetOf: async () => true,
+        process: () => ''
+    };
 }

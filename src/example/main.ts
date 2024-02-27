@@ -1,6 +1,6 @@
 import { getDefaultNodePipeLineGraph } from '../default-node-pipeline';
 import { getDefaultPipeLineGraph } from '../default-pipeline';
-import { PipeLineGraph, processWithPipelineGraph } from '../processing-pipeline';
+import { PipeLineGraph, processWithPipeLineGraph } from '../processing-pipeline';
 
 
 
@@ -25,10 +25,10 @@ function customizeGraph(graph: PipeLineGraph): PipeLineGraph {
 }
 
 
-const defaultPipelineGraph = getDefaultNodePipeLineGraph({});
+const defaultPipeLineGraph = getDefaultNodePipeLineGraph({});
 const graph = customizeGraph(graph);
 
 
 const myDir = "./inputDir";
-const processedResults = await processWithPipelineGraph(myDir, defaultPipelineGraph, {});
+const processedResults = await processWithPipeLineGraph(myDir, defaultPipeLineGraph, {});
 

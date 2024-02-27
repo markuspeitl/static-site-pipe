@@ -1,84 +1,20 @@
-/*export interface IPipelineStage {
-    //render: (input: string) => string;
-    render(input: string): string;
-}*/
-/*export interface IProcessingPipeline<Input, Output> {
-    id?: string;
-    //getpartialPipelines(): IProcessingPipeline<any, any>[];
-    isTarget(input: string): boolean;
-    process(input: Input): any;
-    next: IProcessingPipeline<Output, any>;
-}*/
-
-import { mergePropsToArray, multiplyIfArrayAsync } from "./util";
-
-/*export function processWithPipeline<Input>(input: Input, processingPipeline: IProcessingPipeline<Input, any>): any {
-
-    //const pipelineStages: IProcessingPipeline[] = processingPipeline.getpartialPipelines();
-
-    if (!processingPipeline) {
-        return input;
-    }
-
-    let currentPipelineStage: IProcessingPipeline<any, any> = processingPipeline;
-
-    let currentStageInput: any = input;
-    let currentStageOutput = '';
-
-    do {
-        currentStageOutput = currentPipelineStage.process(currentStageInput);
-        currentStageInput = currentStageOutput;
-        currentPipelineStage = currentPipelineStage.next;
-
-    } while (processingPipeline.next);
-
-    return currentStageOutput;
-};
-
-
-
-//Each Pipeline can be a stage itself (recursive definition / abstraction of stages)
-
-export class ProcessingPipeline<Input, Output> implements IProcessingPipeline<Input, Output> {
-
-    //private stages: IPipelineStage[] = [];
-    private id?: string;
-    next: IProcessingPipeline<Output, any>;
-
-    constructor (next: IProcessingPipeline<any, any>, id?: string) {
-        this.id = id;
-        this.next = next;
-    }
-    getpartialPipelines(): IProcessingPipeline<any, any>[] {
-        throw new Error("Method not implemented.");
-    }
-    abstract isTarget(input: string): boolean;
-
-    process(input: Input): Output {
-        return processWithPipeline(input, this);
-    }
-
-
-    public render(input: Input): Output {
-        return renderWithPipeline(input, this);
-    };
-}*/
-
+import { mergePropsToArray, multiplyIfArrayAsync, Nullable } from './util';
 
 export type ProcessingFunction = (input: any) => any;
-//Can be either a complex Pipeline class/dict or simply a processing function mapping input to output;
-export type PipeLineEntry = IProcessingPipeline | ProcessingFunction;
-export type PipeLineGraph = Record<string, PipeLineEntry>;
+//Can be either a complex PipeLine class/dict or simply a processing function mapping input to output;
+export type PipeLineEntry = PipeLine | ProcessingFunction;
+export type PipeLinesDict = Record<string, PipeLineEntry>;
 
-export interface IProcessingPipeline {
+export interface PipeLine {
     id?: string;
-    isTargetOf?(input: any): Promise<boolean>;
-    process: ProcessingFunction;
-
     //What pipelines are part of this stage
-    partialPipelines?: PipeLineGraph;
+    subchain?: PipeLinesDict;
+    branches?: PipeLinesDict;
     //What is the next step after this conceptual unit has processed the input
-    nextAfter?: PipeLineEntry;
+    next?: PipeLineEntry;
+
+    process: ProcessingFunction;
+    isTargetOf?(input: any): Promise<boolean>;
 }
 
 
@@ -103,43 +39,104 @@ async function processOutputToInput(input: any, inputProcessors: any[], processI
 }
 
 
-async function callPipelineProcess(input: any, pipeLine: PipeLineEntry): Promise<any> {
-    let processingFn: any = null;
-    if (typeof pipeLine === 'function') {
-        processingFn = pipeLine;
-    }
-    else if (typeof pipeLine === 'object') {
-        //If 'isTargetOf' is not defined it is true by default
-        if (!pipeLine.isTargetOf || await pipeLine.isTargetOf(input)) {
+async function callPipeLineProcess(input: any, pipeLineEntry: PipeLineEntry): Promise<any> {
+    const pipeLine = getPipeLineFromEntry(pipeLineEntry);
 
-            processingFn = pipeLine.process;
-        }
+    if (!pipeLine.isTargetOf || await pipeLine.isTargetOf(input)) {
+        //Not proper yet -> if one of the 'input' elements fails to process this stops processing
+        const processingResult = await multiplyIfArrayAsync(pipeLine.process, input);
+        return processingResult;
     }
-    //Not proper yet -> if one of the 'input' elements fails to process this stops processing
-    const processingResult = await multiplyIfArrayAsync(processingFn, input);
-    return processingResult;
+
+    return undefined;
 }
 
-async function processWithPipeline(input: any, pipeLine: PipeLineEntry): Promise<any> {
+async function processWithPipeLine(input: any, pipeLine: PipeLineEntry): Promise<any> {
 
     if (!pipeLine) {
         return input;
     }
 
-    const processingFnsStack: PipeLineEntry[] = mergePropsToArray(pipeLine, [ '', 'partialPipelines', 'nextAfter' ]);
+    const processingFnsStack: PipeLineEntry[] = mergePropsToArray(pipeLine, [ '', 'partialPipeLines', 'nextAfter' ]);
 
     if (!processingFnsStack) {
         return input;
     }
 
     if (processingFnsStack.length <= 1) {
-        return await callPipelineProcess(input, pipeLine);
+        return await callPipeLineProcess(input, pipeLine);
     }
 
     return await processStages(input, processingFnsStack);
+}
+
+//Select sub pipeline to process through isTargetOf (branching)
+async function processWithTargeted(input: any, pipeLineOptions: PipeLinesDict): Promise<any> {
+    for (const pipeLineId in pipeLineOptions) {
+        return processWithPipeLine(input, pipeLineOptions[ pipeLineId ]);
+        /*if (result) {
+            return result;
+        }*/
+    }
+    return input;
+}
+
+//Chain sub pipelines in series to get pipeline result
+function processStages(input: any, pipeLineStages: PipeLineEntry[]) {
+    return processOutputToInput(input, pipeLineStages, processWithPipeLine);
+}
+
+export function getPipeLineFromEntry(pipeLineEntry?: PipeLineEntry, id?: string): PipeLine {
+    if (typeof pipeLineEntry === 'object' && pipeLineEntry.process !== undefined) {
+        return pipeLineEntry;
+    }
+    else if (typeof pipeLineEntry === 'function' && id) {
+
+        //If 'isTargetOf' is not defined it is true by default
+        return {
+            id: id,
+            isTargetOf: async () => true,
+            process: pipeLineEntry
+        };
+    }
+
+    throw new Error(`Invalid pipeLine in 'getPipeLine' needs to have .process method or be a function, was: ${pipeLineEntry}`);
+}
+
+export async function processWithPipeLineGraph(input: any, pipeLineEntry: Nullable<PipeLineEntry>, options?: any): Promise<any> {
+    //let graph = options.graph;
+    /*if (!graph) {
+        graph = getDefaultBaseGraph(options);
+    }*/
+    if (!pipeLineEntry) {
+        return null;
+    }
+    const pipeLine: PipeLine = getPipeLineFromEntry(pipeLineEntry);
+    return await pipeLine.process(input);
+    //return await processWithTargeted(input, pipeLine);
+}
+
+/*export async function process(input: any, options: any): Promise<any> {
+
+        let graph = options.graph;
+        if (!graph) {
+            graph = getDefaultBaseGraph(options);
+        }
+
+        return await processWithTargeted(input, graph);
+    }*/
+
+//Provides options from where one options is selected
+/*export class ForkProcessingPipeLine implements PipeLine {
+    pipeLineOptions;
+}
+
+//Has several stages through which the data is passed through
+export class StagesProcessingPipeLine {
+}*/
 
 
-    /*let processingFn: any = null;
+/*let processingFn: any = null;
     if (typeof pipeLine === 'function') {
         processingFn = pipeLine;
     }
@@ -159,8 +156,8 @@ async function processWithPipeline(input: any, pipeLine: PipeLineEntry): Promise
         const ;
 
 
-        if (pipeLine.partialPipelines) {
-            processStages(processingResult, pipeLine.partialPipelines);
+        if (pipeLine.partialPipeLines) {
+            processStages(processingResult, pipeLine.partialPipeLines);
         }
         if (pipeLine.nextAfter) {
             processStages(processingResult, pipeLine.nextAfter);
@@ -169,49 +166,56 @@ async function processWithPipeline(input: any, pipeLine: PipeLineEntry): Promise
 
     return processingResult;*/
 
-    //return undefined;
-}
+//return undefined;
 
-//Select sub pipeline to process through isTargetOf (branching)
-async function processWithTargeted(input: any, pipeLineOptions: PipeLineGraph): Promise<any> {
-    for (const pipeLineId in pipeLineOptions) {
-        return processWithPipeline(input, pipeLineOptions[ pipeLineId ]);
-        /*if (result) {
-            return result;
-        }*/
+/*export function processWithPipeLine<Input>(input: Input, processingPipeLine: PipeLine<Input, any>): any {
+
+    //const pipelineStages: PipeLine[] = processingPipeLine.getpartialPipeLines();
+
+    if (!processingPipeLine) {
+        return input;
     }
-    return input;
-}
 
-//Chain sub pipelines in series to get pipeline result
-function processStages(input: any, pipeLineStages: PipeLineEntry[]) {
-    return processOutputToInput(input, pipeLineStages, processWithPipeline);
-}
+    let currentPipeLineStage: PipeLine<any, any> = processingPipeLine;
 
-export async function processWithPipelineGraph(input: any, graph: PipeLineGraph, options: any): Promise<any> {
-    //let graph = options.graph;
-    /*if (!graph) {
-        graph = getDefaultBaseGraph(options);
-    }*/
+    let currentStageInput: any = input;
+    let currentStageOutput = '';
 
-    return await processWithTargeted(input, graph);
-}
+    do {
+        currentStageOutput = currentPipeLineStage.process(currentStageInput);
+        currentStageInput = currentStageOutput;
+        currentPipeLineStage = currentPipeLineStage.next;
 
-/*export async function process(input: any, options: any): Promise<any> {
+    } while (processingPipeLine.next);
 
-        let graph = options.graph;
-        if (!graph) {
-            graph = getDefaultBaseGraph(options);
-        }
+    return currentStageOutput;
+};
 
-        return await processWithTargeted(input, graph);
-    }*/
 
-//Provides options from where one options is selected
-/*export class ForkProcessingPipeline implements IProcessingPipeline {
-    pipeLineOptions;
-}
 
-//Has several stages through which the data is passed through
-export class StagesProcessingPipeline {
+//Each PipeLine can be a stage itself (recursive definition / abstraction of stages)
+
+export class ProcessingPipeLine<Input, Output> implements PipeLine<Input, Output> {
+
+    //private stages: IPipeLineStage[] = [];
+    private id?: string;
+    next: PipeLine<Output, any>;
+
+    constructor (next: PipeLine<any, any>, id?: string) {
+        this.id = id;
+        this.next = next;
+    }
+    getpartialPipeLines(): PipeLine<any, any>[] {
+        throw new Error("Method not implemented.");
+    }
+    abstract isTarget(input: string): boolean;
+
+    process(input: Input): Output {
+        return processWithPipeLine(input, this);
+    }
+
+
+    public render(input: Input): Output {
+        return renderWithPipeLine(input, this);
+    };
 }*/

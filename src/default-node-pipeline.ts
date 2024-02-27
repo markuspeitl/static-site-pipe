@@ -1,6 +1,6 @@
 import { IResourceProvider, getDefaultPipeLineGraph } from "./default-pipeline";
 import { PipeLineGraph } from "./processing-pipeline";
-import { processWithPipelineGraph } from "./processing-pipeline";
+import { processWithPipeLineGraph } from "./processing-pipeline";
 
 
 
@@ -242,5 +242,5 @@ export function getDefaultNodePipeLineGraph(options) {
 }
 
 /*export async function process(input: any, options: any): Promise<any> {
-    return await processWithPipelineGraph(input, defaultPipeLineGraph, options);
+    return await processWithPipeLineGraph(input, defaultPipeLineGraph, options);
 }*/

@@ -1,34 +1,10 @@
-import { addPipeline, getPipeline } from './pipeline-provider';
-import { processWithPipelineGraph, PipeLineEntry, PipeLineGraph, IProcessingPipeline } from './processing-pipeline';
-import { ArrayAndNull, Nullable, NullableArray, NullableString } from './util';
+import { GlobalConfig, IResourceProvider } from './global-config';
+import { GraphEdges, connectPipeLineGraph } from './pipeline-connect';
+import { addPipeLine, getNewPipeLine, getPipeLine } from './pipeline-provider';
+import { processWithPipeLineGraph, PipeLineEntry, PipeLine, PipeLinesDict } from './processing-pipeline';
+import { NullableArray, NullableString } from './util';
 
-/*const basePipelineOptions: PipeLineGraph = {
-    dir: {
-        id: 'dir',
-        isTargetOf: async () => true,
-        process: () => ''
-    },
-    file: {
-        id: 'file',
-        isTargetOf: async () => true,
-        process: () => ''
-    },
-    template: {
-        id: 'template',
-        isTargetOf: async () => true,
-        process: () => ''
-    }
-};*/
-
-
-export interface GraphEdges {
-    subchain?: GraphSubEdgesDict;
-    branches?: GraphSubEdgesDict;
-    next?: string;
-}
-export type GraphSubEdgesDict = Record<string, GraphEdges | null>;
-
-const pipeLineGraphEdges: GraphEdges = {
+export const defaultPipeLineGraphEdges: GraphEdges = {
     subchain: {},
     branches: {
         dir: {
@@ -101,62 +77,30 @@ const pipeLineGraphEdges: GraphEdges = {
     next: undefined,
 };
 
+function createSimplePipeLine(id: string, isTargetOf: (input: any) => Promise<boolean>, stages: PipeLinesDict, globalConfig: GlobalConfig) {
 
+    //const getPipeLine: (id: string) => PipeLineEntry = globalConfig.getPipeLine;
+    const getNewPipeLine: (id: string) => PipeLine = globalConfig.getNewPipeLine;
+    const pipeLine: PipeLine = getNewPipeLine(id);
 
-//Dependency injection as a means to abstract filesystem (for non node environments or if the files are stored remotely)
-export interface IResourceProvider {
-    getNodeResources(ancestorNodeResourceUri: NullableString): Promise<NullableArray<string>>;
-    //readFile(filePath: string): Promise<string>;
-    readResource(resourceUri: NullableString): Promise<NullableString>;
-    isResourceUri(resourceUri: NullableString): Promise<boolean>;
-    exists(resourceUri: NullableString): Promise<boolean>;
-    //writeFile(path: string, content: string);
-    //watchDirForChanges(dirPath: string);
-}
+    if (typeof pipeLine === 'object' && pipeLine.subchain !== undefined) {
+        pipeLine.isTargetOf = isTargetOf;
 
-function isTypeOrItemType(value: any | any[], matchType: string): boolean {
-    let foundDefined = undefined;
-
-    if (Array.isArray(value)) {
-
-        for (const elem of value) {
-            if (elem !== undefined) {
-                foundDefined = elem;
-            }
-            else if (matchType === 'undefined') {
-                return true;
-            }
-
-            if (foundDefined) {
-                break;
-            }
+        for (const key in stages) {
+            const currentPipeLine = stages[ key ];
+            pipeLine.subchain[ key ] = currentPipeLine;
         }
     }
-    else {
-        foundDefined = value;
-    }
 
-    if (foundDefined && typeof value === matchType) {
-        return true;
-    }
-
-    return false;
+    return pipeLine;
 }
 
-export function getNewPipeline(id: string): IProcessingPipeline {
-    return {
-        id: id,
-        isTargetOf: async () => true,
-        process: () => ''
-    };
-}
+function initDirToFilesPipeLine(globalConfig: GlobalConfig): PipeLine {
 
-function initDirToFilesPipeline(globalConfig: Record<string, any>): IProcessingPipeline {
-    const pipeLine: IProcessingPipeline = getNewPipeline('dir');
     const fsProvider: IResourceProvider = globalConfig.fsProvider;
-
-    if (typeof pipeLine === 'object' && pipeLine.partialPipelines !== undefined) {
-        pipeLine.isTargetOf = async (input: any) => {
+    const pipeLine: PipeLine = createSimplePipeLine(
+        'dir',
+        async (input: any) => {
             if (!input || typeof input !== 'string') {
                 return false;
             }
@@ -164,34 +108,36 @@ function initDirToFilesPipeline(globalConfig: Record<string, any>): IProcessingP
             const uriResourceExists = await fsProvider.exists(input);
 
             return isResourceUri && uriResourceExists;
-        };
-        pipeLine.partialPipelines.walk = async (dirResourceUri: string) => {
+        },
+        {
+            walk: async (dirResourceUri: string) => {
 
-            return fsProvider.getNodeResources(dirResourceUri);
+                return fsProvider.getNodeResources(dirResourceUri);
 
-            /*for await (const dirFilesSet of walk(input)) {
-
-            }
-
-            const filePaths: Promise<NullableArray<string>> = await fsProvider.getNodeResources(dirResourceUri);
-            return filePaths;*/
-        };
-        pipeLine.partialPipelines.print = async (input: any) => {
-            console.log(input);
-            return input;
-        };
-    }
+                /*for await (const dirFilesSet of walk(input)) {
+    
+                }
+    
+                const filePaths: Promise<NullableArray<string>> = await fsProvider.getNodeResources(dirResourceUri);
+                return filePaths;*/
+            },
+            print: async (input: any) => {
+                console.log(input);
+                return input;
+            },
+        },
+        globalConfig
+    );
 
     return pipeLine;
 }
 
-function initFilesToBuffersPipeline(globalConfig: Record<string, any>): IProcessingPipeline {
-    const pipeLine: IProcessingPipeline = getNewPipeline('file');
+function initFilesToBuffersPipeLine(globalConfig: GlobalConfig): PipeLine {
 
     const fsProvider: IResourceProvider = globalConfig.fsProvider;
-
-    if (typeof pipeLine === 'object' && pipeLine.partialPipelines !== undefined) {
-        pipeLine.isTargetOf = async (input: any) => {
+    const pipeLine: PipeLine = createSimplePipeLine(
+        'file',
+        async (input: any) => {
             if (!input || typeof input !== 'string') {
                 return false;
             }
@@ -199,102 +145,42 @@ function initFilesToBuffersPipeline(globalConfig: Record<string, any>): IProcess
             const uriResourceExists = await fsProvider.exists(input);
 
             return isResourceUri && uriResourceExists;
-        };
-        pipeLine.partialPipelines.printFile = async (input: any) => {
-            console.log(input);
-            return input;
-        };
-        pipeLine.partialPipelines.readFile = async (input: any) => {
-            return await fsProvider.readResource(input);
-        };
-    }
+        },
+        {
+            printFile: async (input: any) => {
+                console.log(input);
+                return input;
+            },
+            readFile: async (input: any) => {
+                return await fsProvider.readResource(input);
+            },
+        },
+        globalConfig
+    );
 
     return pipeLine;
 }
 
-export function connectPipelines(pipe1: PipeLineEntry, pipe2: PipeLineEntry) {
-    if (typeof pipe1 === 'object' && pipe1.nextAfter !== undefined) {
-        pipe1.nextAfter = pipe2;
-    }
+export function initializeDefaultPipeLines(globalConfig: GlobalConfig) {
+    const dirPipeLine: PipeLine = initDirToFilesPipeLine(globalConfig);
+    const filePipeLine: PipeLine = initFilesToBuffersPipeLine(globalConfig);
+    addPipeLine(dirPipeLine);
+    addPipeLine(filePipeLine);
+    addPipeLine(filePipeLine, 'template');
+
+    return getPipeLine;
 }
 
-export function chainPipelines(...pipeLines: PipeLineEntry[]) {
-    if (pipeLines.length <= 2) {
-        return;
-    }
-
-    for (let index = 1; index < pipeLines.length; index++) {
-        const currentPipeline = pipeLines[ index ];
-        connectPipelines(pipeLines[ index - 1 ], currentPipeline);
-    }
-}
-
-/*export function getDefaultPipeLineGraph(options: any): PipeLineGraph {
-    //const pipeLineGraph = basePipelineOptions;
-    const dirPipeLine = getDirToFilesPipeline(options.fsProvider);
-    const filePipeline = getFilesToBuffersPipeline(options.fsProvider);
-    const templatePipeline = pipeLineGraph.template;
-
-    chainPipelines(dirPipeLine, filePipeline, templatePipeline);
-
-    return pipeLineGraph;
-}*/
-
-
-
-export function initializeDefaultPipelines(globalConfig: Record<string, any>) {
-    const dirPipeLine: IProcessingPipeline = initDirToFilesPipeline(globalConfig);
-    const filePipeline: IProcessingPipeline = initFilesToBuffersPipeline(globalConfig);
-    addPipeline(dirPipeLine);
-    addPipeline(filePipeline);
-    addPipeline(filePipeline, 'template');
-
-    return getPipeline;
-}
-
-export function iterateDictConnect(edgesDict: GraphSubEdgesDict | null | undefined, globalConfig: Record<string, any>, defaultConnType: string = 'next', currentKey = "default"): void {
-    if (!edgesDict) {
-        return;
-    }
-    for (const edgeTargetKey in edgesDict) {
-        connectPipelineGraph(edgesDict[ edgeTargetKey ], globalConfig, edgeTargetKey);
-    }
-}
-
-export function connectPipelineGraph(pipeLineGraphEdges: GraphEdges | null, globalConfig: Record<string, any>, currentKey = "default") {
-
-    if (!pipeLineGraphEdges) {
-        return;
-    }
-
-    const pipeLineProvider: (id: string) => PipeLineEntry = globalConfig.getPipeline;
-    const currentPipeEdges: GraphEdges = pipeLineGraphEdges;
-
-    iterateDictConnect(currentPipeEdges.subchain, globalConfig, 'next', currentKey);
-    iterateDictConnect(currentPipeEdges.branches, globalConfig, 'exitparent', currentKey);
-
-    if (currentPipeEdges.next) {
-
-    }
-
-
-    /*subchain?: GraphSubEdgesDict;
-    branches?: GraphSubEdgesDict;
-    next?: string;*/
-
-    //getPipeline('dir')
-}
-
-export function initConnectPipelineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: Record<string, any>) {
-    const getPipeline: (id: string) => PipeLineEntry = initializeDefaultPipelines(globalConfig);
-    connectPipelineGraph(pipeLineGraphEdges, globalConfig);
+export function initConnectPipeLineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: GlobalConfig) {
+    const getPipeLine: (id: string) => PipeLineEntry = initializeDefaultPipeLines(globalConfig);
+    connectPipeLineGraph(pipeLineGraphEdges, globalConfig);
 }
 
 export async function process(input: any, options: any): Promise<any> {
     //let graph = options.graph;
     //const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
 
-    const defaultPipeLineGraph: IProcessingPipeline | null | undefined = getPipeline('default');
+    const defaultPipeLineGraph: PipeLine | null | undefined = getPipeLine('default');
 
-    return await processWithPipelineGraph(input, defaultPipeLineGraph, options);
+    return await processWithPipeLineGraph(input, defaultPipeLineGraph, options);
 }
