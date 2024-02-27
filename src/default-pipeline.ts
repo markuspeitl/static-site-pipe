@@ -1,7 +1,8 @@
-import { processWithPipelineGraph, PipeLineEntry, PipeLineGraph } from './processing-pipeline';
+import { addPipeline, getPipeline } from './pipeline-provider';
+import { processWithPipelineGraph, PipeLineEntry, PipeLineGraph, IProcessingPipeline } from './processing-pipeline';
 import { ArrayAndNull, Nullable, NullableArray, NullableString } from './util';
 
-const basePipelineOptions: PipeLineGraph = {
+/*const basePipelineOptions: PipeLineGraph = {
     dir: {
         id: 'dir',
         isTargetOf: async () => true,
@@ -17,10 +18,17 @@ const basePipelineOptions: PipeLineGraph = {
         isTargetOf: async () => true,
         process: () => ''
     }
-};
+};*/
 
 
-const pipeLineGraphEdges: Record<string, any> = {
+export interface GraphEdges {
+    subchain?: GraphSubEdgesDict;
+    branches?: GraphSubEdgesDict;
+    next?: string;
+}
+export type GraphSubEdgesDict = Record<string, GraphEdges | null>;
+
+const pipeLineGraphEdges: GraphEdges = {
     subchain: {},
     branches: {
         dir: {
@@ -31,7 +39,7 @@ const pipeLineGraphEdges: Record<string, any> = {
                     //next: 'exitparent' //removed as this would ignore all files of the dir
                 },
             },
-            branches: null,
+            branches: undefined,
             next: 'file' || 'default'
         },
         //changed watched files would be reemitted here (no need to handle dir changes, -> if a dir is renamed -> its contents change)
@@ -47,7 +55,7 @@ const pipeLineGraphEdges: Record<string, any> = {
                 },
             },
             //Branches do all get passed the same data from parent pipeline and are activated if they are enabled (through isTargetOf)
-            branches: null,
+            branches: undefined,
             next: 'template' || 'default'
         },
         template: {
@@ -90,7 +98,7 @@ const pipeLineGraphEdges: Record<string, any> = {
         },
         writeCompiled: {}
     },
-    next: null,
+    next: undefined,
 };
 
 
@@ -135,11 +143,20 @@ function isTypeOrItemType(value: any | any[], matchType: string): boolean {
     return false;
 }
 
-function getDirToFilesPipeline(fsProvider: IResourceProvider): PipeLineEntry {
-    const dirPipeLine = basePipelineOptions.dir;
+export function getNewPipeline(id: string): IProcessingPipeline {
+    return {
+        id: id,
+        isTargetOf: async () => true,
+        process: () => ''
+    };
+}
 
-    if (typeof dirPipeLine === 'object' && dirPipeLine.partialPipelines !== undefined) {
-        dirPipeLine.isTargetOf = async (input: any) => {
+function initDirToFilesPipeline(globalConfig: Record<string, any>): IProcessingPipeline {
+    const pipeLine: IProcessingPipeline = getNewPipeline('dir');
+    const fsProvider: IResourceProvider = globalConfig.fsProvider;
+
+    if (typeof pipeLine === 'object' && pipeLine.partialPipelines !== undefined) {
+        pipeLine.isTargetOf = async (input: any) => {
             if (!input || typeof input !== 'string') {
                 return false;
             }
@@ -148,7 +165,7 @@ function getDirToFilesPipeline(fsProvider: IResourceProvider): PipeLineEntry {
 
             return isResourceUri && uriResourceExists;
         };
-        dirPipeLine.partialPipelines.walk = async (dirResourceUri: string) => {
+        pipeLine.partialPipelines.walk = async (dirResourceUri: string) => {
 
             return fsProvider.getNodeResources(dirResourceUri);
 
@@ -159,17 +176,19 @@ function getDirToFilesPipeline(fsProvider: IResourceProvider): PipeLineEntry {
             const filePaths: Promise<NullableArray<string>> = await fsProvider.getNodeResources(dirResourceUri);
             return filePaths;*/
         };
-        dirPipeLine.partialPipelines.print = async (input: any) => {
+        pipeLine.partialPipelines.print = async (input: any) => {
             console.log(input);
             return input;
         };
     }
 
-    return dirPipeLine;
+    return pipeLine;
 }
 
-function getFilesToBuffersPipeline(fsProvider: IResourceProvider): PipeLineEntry {
-    const pipeLine = basePipelineOptions.file;
+function initFilesToBuffersPipeline(globalConfig: Record<string, any>): IProcessingPipeline {
+    const pipeLine: IProcessingPipeline = getNewPipeline('file');
+
+    const fsProvider: IResourceProvider = globalConfig.fsProvider;
 
     if (typeof pipeLine === 'object' && pipeLine.partialPipelines !== undefined) {
         pipeLine.isTargetOf = async (input: any) => {
@@ -210,8 +229,8 @@ export function chainPipelines(...pipeLines: PipeLineEntry[]) {
     }
 }
 
-export function getDefaultPipeLineGraph(options: any): PipeLineGraph {
-    const pipeLineGraph = basePipelineOptions;
+/*export function getDefaultPipeLineGraph(options: any): PipeLineGraph {
+    //const pipeLineGraph = basePipelineOptions;
     const dirPipeLine = getDirToFilesPipeline(options.fsProvider);
     const filePipeline = getFilesToBuffersPipeline(options.fsProvider);
     const templatePipeline = pipeLineGraph.template;
@@ -219,11 +238,63 @@ export function getDefaultPipeLineGraph(options: any): PipeLineGraph {
     chainPipelines(dirPipeLine, filePipeline, templatePipeline);
 
     return pipeLineGraph;
+}*/
+
+
+
+export function initializeDefaultPipelines(globalConfig: Record<string, any>) {
+    const dirPipeLine: IProcessingPipeline = initDirToFilesPipeline(globalConfig);
+    const filePipeline: IProcessingPipeline = initFilesToBuffersPipeline(globalConfig);
+    addPipeline(dirPipeLine);
+    addPipeline(filePipeline);
+    addPipeline(filePipeline, 'template');
+
+    return getPipeline;
+}
+
+export function iterateDictConnect(edgesDict: GraphSubEdgesDict | null | undefined, globalConfig: Record<string, any>, defaultConnType: string = 'next', currentKey = "default"): void {
+    if (!edgesDict) {
+        return;
+    }
+    for (const edgeTargetKey in edgesDict) {
+        connectPipelineGraph(edgesDict[ edgeTargetKey ], globalConfig, edgeTargetKey);
+    }
+}
+
+export function connectPipelineGraph(pipeLineGraphEdges: GraphEdges | null, globalConfig: Record<string, any>, currentKey = "default") {
+
+    if (!pipeLineGraphEdges) {
+        return;
+    }
+
+    const pipeLineProvider: (id: string) => PipeLineEntry = globalConfig.getPipeline;
+    const currentPipeEdges: GraphEdges = pipeLineGraphEdges;
+
+    iterateDictConnect(currentPipeEdges.subchain, globalConfig, 'next', currentKey);
+    iterateDictConnect(currentPipeEdges.branches, globalConfig, 'exitparent', currentKey);
+
+    if (currentPipeEdges.next) {
+
+    }
+
+
+    /*subchain?: GraphSubEdgesDict;
+    branches?: GraphSubEdgesDict;
+    next?: string;*/
+
+    //getPipeline('dir')
+}
+
+export function initConnectPipelineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: Record<string, any>) {
+    const getPipeline: (id: string) => PipeLineEntry = initializeDefaultPipelines(globalConfig);
+    connectPipelineGraph(pipeLineGraphEdges, globalConfig);
 }
 
 export async function process(input: any, options: any): Promise<any> {
     //let graph = options.graph;
-    const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
+    //const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
+
+    const defaultPipeLineGraph: IProcessingPipeline | null | undefined = getPipeline('default');
 
     return await processWithPipelineGraph(input, defaultPipeLineGraph, options);
 }

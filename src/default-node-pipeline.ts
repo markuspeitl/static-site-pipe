@@ -230,8 +230,7 @@ export function getNodeFsProvider(): IResourceProvider {
     return new NodeFsProvider(fs);
 }
 
-export async function process(input: any, options: any): Promise<any> {
-
+export function getDefaultNodePipeLineGraph(options) {
     if (!options.fsProvider) {
         options.fsProvider;
     }
@@ -239,5 +238,9 @@ export async function process(input: any, options: any): Promise<any> {
     //let graph = options.graph;
     const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
 
-    return await processWithPipelineGraph(input, defaultPipeLineGraph, options);
+    return defaultPipeLineGraph;
 }
+
+/*export async function process(input: any, options: any): Promise<any> {
+    return await processWithPipelineGraph(input, defaultPipeLineGraph, options);
+}*/
