@@ -171,9 +171,9 @@ export function initializeDefaultPipeLines(globalConfig: GlobalConfig) {
     return getPipeLine;
 }
 
-export function initConnectPipeLineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: GlobalConfig) {
+export function initConnectPipeLineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: GlobalConfig): PipeLine | null {
     const getPipeLine: (id: string) => PipeLineEntry = initializeDefaultPipeLines(globalConfig);
-    connectPipeLineGraph(pipeLineGraphEdges, globalConfig);
+    return connectPipeLineGraph(pipeLineGraphEdges, globalConfig);
 }
 
 export async function process(input: any, options: any): Promise<any> {

@@ -6,7 +6,7 @@ import { Nullable } from './util';
 export interface GraphEdges {
     subchain?: GraphSubEdgesDict;
     branches?: GraphSubEdgesDict;
-    next?: string;
+    next?: string | string[];
 }
 export type GraphSubEdgesDict = Record<string, GraphEdges | null>;
 
@@ -19,10 +19,10 @@ export function iterateDictConnect(edgesDict: GraphSubEdgesDict | null | undefin
     }
 }
 
-export function connectPipeLineGraph(pipeLineGraphEdges: GraphEdges | null, globalConfig: GlobalFunctions, currentKey = "default") {
+export function connectPipeLineGraph(pipeLineGraphEdges: GraphEdges | null, globalConfig: GlobalFunctions, currentKey = "default"): PipeLine | null {
 
     if (!pipeLineGraphEdges) {
-        return;
+        return null;
     }
 
     const pipeLineProvider: (id: string) => PipeLineEntry = globalConfig.getPipeLine;
@@ -41,6 +41,8 @@ export function connectPipeLineGraph(pipeLineGraphEdges: GraphEdges | null, glob
     next?: string;*/
 
     //getPipeLine('dir')
+
+    return pipeLineProvider('default') as PipeLine;
 }
 
 export function connectPipeLines(pipeEntry1: PipeLineEntry, pipeEntry2: PipeLineEntry): PipeLine | null {

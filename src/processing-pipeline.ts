@@ -11,7 +11,7 @@ export interface PipeLine {
     subchain?: PipeLinesDict;
     branches?: PipeLinesDict;
     //What is the next step after this conceptual unit has processed the input
-    next?: PipeLineEntry;
+    next?: PipeLineEntry | Array<PipeLineEntry>;
 
     process: ProcessingFunction;
     isTargetOf?(input: any): Promise<boolean>;

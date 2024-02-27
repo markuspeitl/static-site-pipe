@@ -1,12 +1,13 @@
-import { IResourceProvider, getDefaultPipeLineGraph } from "./default-pipeline";
-import { PipeLineGraph } from "./processing-pipeline";
-import { processWithPipeLineGraph } from "./processing-pipeline";
+import { PipeLine, processWithPipeLineGraph } from "./processing-pipeline";
 
 
 
 import * as path from 'path';
 import * as fs from 'fs';
 import { NullableString, ArrayAndNull, NullableArray } from './util';
+import { IResourceProvider, GlobalConfig } from './global-config';
+import { defaultPipeLineGraphEdges, initConnectPipeLineGraph } from "./default-pipeline";
+import { GraphEdges } from "./pipeline-connect";
 //Apparently a bit more stable fs implementation: https://www.npmjs.com/package/graceful-fs
 //var fs = require('graceful-fs')
 
@@ -230,15 +231,18 @@ export function getNodeFsProvider(): IResourceProvider {
     return new NodeFsProvider(fs);
 }
 
-export function getDefaultNodePipeLineGraph(options) {
-    if (!options.fsProvider) {
-        options.fsProvider;
+export function getDefaultNodePipeLineGraph(globalConfig: GlobalConfig): PipeLine | null {
+    if (!globalConfig.fsProvider) {
+        globalConfig.fsProvider;
     }
 
-    //let graph = options.graph;
-    const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
+    const defaultGraphEdges: GraphEdges = defaultPipeLineGraphEdges;
+    return initConnectPipeLineGraph(defaultGraphEdges, globalConfig);
 
-    return defaultPipeLineGraph;
+    //let graph = options.graph;
+    //const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
+
+    //return defaultPipeLineGraph;
 }
 
 /*export async function process(input: any, options: any): Promise<any> {
