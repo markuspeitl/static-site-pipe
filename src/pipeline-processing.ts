@@ -1,25 +1,25 @@
-import { mergePropsToArray, multiplyIfArrayAsync, Nullable } from './utils/util';
+import { ItemArrayOrNull, mergePropsToArray, multiplyIfArrayAsync, Nullable, SingleOrArray } from './utils/util';
 
-export type ProcessingFunction = (input: any) => any;
-//Can be either a complex PipeLine class/dict or simply a processing function mapping input to output;
-export type PipeLineEntry = PipeLine | ProcessingFunction;
+export type ProcessingFunction<InputType> = (input: InputType) => InputType;
 
-//export type PipeLinesDict = Record<string, PipeLineEntry>;
-
-//Javascript @ < ES2015 not supported as object/record key order is no guaranteed (https://stackoverflow.com/questions/5525795/does-javascript-guarantee-object-property-order)
-export type PipeLinesDict = Record<string, PipeLine>;
-
-export interface PipeLine {
-    id?: string;
-    //What pipelines are part of this stage
-    subchain?: PipeLinesDict;
-    branches?: PipeLinesDict;
-    //What is the next step after this conceptual unit has processed the input
-    next?: PipeLineEntry | Array<PipeLineEntry>;
-
-    process: ProcessingFunction;
-    isTargetOf?(input: any): Promise<boolean>;
+export interface PipeLineProcessor<InputType> {
+    process: ProcessingFunction<InputType>;
+    isTargetOf?(input: InputType): Promise<boolean>;
 }
+
+export interface PipeLine<InputType, OutputType> extends PipeLineProcessor<InputType> {
+    id?: string;
+    start?: SingleOrArray<PipeLine<InputType, any>>;
+    next?: SingleOrArray<PipeLine<OutputType, any>>;
+}
+
+
+//Maybe wrap .process during execution and keep track of some metadata in the wrapper
+//(example: data pipeline history, data source -> how did the data look like before its transformations)
+
+//Maybe make it possible for "start and next" to be functions -> dynamically reorder/rewire graph
+
+
 //Branching behaviours:
 //subchain -> start at 1st element and iterate through chain passing in result of the previous stage -> return result of the subchain
 
@@ -244,4 +244,24 @@ export class ProcessingPipeLine<Input, Output> implements PipeLine<Input, Output
     public render(input: Input): Output {
         return renderWithPipeLine(input, this);
     };
+}*/
+
+//Can be either a complex PipeLine class/dict or simply a processing function mapping input to output;
+//export type PipeLineEntry = PipeLine | ProcessingFunction;
+
+//export type PipeLinesDict = Record<string, PipeLineEntry>;
+
+//Javascript @ < ES2015 not supported as object/record key order is no guaranteed (https://stackoverflow.com/questions/5525795/does-javascript-guarantee-object-property-order)
+//export type PipeLinesDict = Record<string, PipeLine>;
+
+/*export interface PipeLine {
+    id?: string;
+    //What pipelines are part of this stage
+    subchain?: PipeLinesDict;
+    branches?: PipeLinesDict;
+    //What is the next step after this conceptual unit has processed the input
+    next?: PipeLineEntry | Array<PipeLineEntry>;
+
+    process: ProcessingFunction;
+    isTargetOf?(input: any): Promise<boolean>;
 }*/

@@ -1,7 +1,7 @@
 import { GlobalConfig, IResourceProvider } from './global-config';
 import { GraphEdges, connectPipeLineGraph } from './pipeline-connect';
 import { addPipeLine, getNewPipeLine, getPipeLine } from './pipeline-provider';
-import { processWithPipeLineGraph, PipeLineEntry, PipeLine, PipeLinesDict } from './processing-pipeline';
+import { processWithPipeLineGraph, PipeLineEntry, PipeLine, PipeLinesDict } from './pipeline-processing';
 import { ItemArrayOrNull, NullableArray, NullableString } from './utils/util';
 
 const chainExplicitSample = {
@@ -67,8 +67,8 @@ export interface PipeGraphEdges extends GraphMeta {
 }
 export type GraphSubEdgesDict = Record<string, GraphEdges | null>;*/
 
-type NodeReferences = ItemArrayOrNull<string>;
-export type GraphTypeOptions = 'branch' | 'distribute' | 'dist' | 'first' | null | undefined;
+export type NodeReferences = ItemArrayOrNull<string>;
+export type GraphTypeOptions = 'branch' | 'distribute' | 'dist' | 'first' | 'last' | null | undefined;
 export type NextReferenceOption = 'default' | 'sibling' | 'exit' | 'parent' | 'null' | string | undefined;
 
 export interface GraphMeta {
@@ -79,6 +79,7 @@ export interface GraphMeta {
 }
 
 export type ValidGraphIdentities = string | PipeGraphEdges | ChainGraphEdges;
+
 export interface PipeGraphEdges extends GraphMeta {
     graph?: PipeGraphEdgesDict;
 }
@@ -105,7 +106,8 @@ function chainEdges(items: ChainItems, nextAfter?: string | string[]) {
 }
 
 //Adding 'graph' subproperty makes this somewhat difficult to read, but makes it so it can be properly typed
-const graphEdges: PipeGraphEdges = {
+//Note the edges information is discarded during the connection process (it is meta data) and will be represented through references for the actual pipelines.
+const defaultPipeLineGraphEdges: PipeGraphEdges = {
     start: [ 'dir', 'file', 'template' ], //Start defines the entrypoint into the pipeline
     //type: 'dist',
     graph: {

@@ -1,6 +1,6 @@
-import { initializeDefaultPipeLines } from "./default-pipeline";
+import { ChainGraphEdges, ChainItems, GraphMeta, NodeReferences, PipeGraphEdges, ValidGraphIdentities, initializeDefaultPipeLines } from "./default-pipeline";
 import { GlobalConfig, GlobalFunctions } from "./global-config";
-import { PipeLine, PipeLineEntry, getPipeLineFromEntry } from "./processing-pipeline";
+import { PipeLine, getPipeLineFromEntry } from "./pipeline-processing";
 import { Nullable } from './utils/util';
 
 export interface GraphEdges {
@@ -19,21 +19,246 @@ export function iterateDictConnect(edgesDict: GraphSubEdgesDict | null | undefin
     }
 }
 
-export function connectPipeLineGraph(pipeLineGraphEdges: GraphEdges | null, globalConfig: GlobalFunctions, currentKey = "default"): PipeLine | null {
+function getArrayFrom<ItemType>(item?: ItemType | ItemType[]): ItemType[] {
+    if (!item) {
+        return [];
+    }
 
+    if (!Array.isArray(item)) {
+        return [ item ];
+    }
+
+    return item;
+}
+
+function wireRefsToPipelineTargets(currentGraphEdges: PipeGraphEdges, currentGraphPipe: PipeLine<any, any>, edgesAndGraphKey: string, getPipeLineFn: any) {
+
+    const pipeLineTargets: NodeReferences = currentGraphEdges[ edgesAndGraphKey ];
+
+    currentGraphPipe.start = getArrayFrom(currentGraphPipe.start);
+    if (pipeLineTargets) {
+        for (const targetKey of pipeLineTargets) {
+            const selectedTarget = getPipeLineFn(targetKey);
+
+            currentGraphPipe.start.push(selectedTarget);
+        }
+    }
+}
+
+//Replace references to pipelines from edgesGraph in actual pipeline with actual references
+function wireRefsOnPipelineProps(currentGraphEdges: PipeGraphEdges, currentGraphPipe: PipeLine<any, any>, edgesAndGraphKeys: string[], getPipeLineFn: any) {
+
+    for (const key of edgesAndGraphKeys) {
+        wireRefsToPipelineTargets(currentGraphEdges, currentGraphPipe, key, getPipeLineFn);
+    }
+}
+
+
+// dir -> dir.start -> chain -> chain.start -> walkDir -> printDirFiles -> chain.next -> dir.next
+
+//There are 2 options how the graph can be wired:
+// 1. Only use nodes and the 'next' property to point towards the next nodes to move the output data to
+// Problem with this is that the runtime graph has no knowledge of the nesting of the structure and
+// it is necessary to keep track of the previous levels when wiring/building the graph to refer back to the end node 'next' property of a wrapping pipeline
+
+//Parsing and wiring the graph is not so much a problem, but keeping track of the context is a bit difficult
+
+
+export function resolveGraphEdges(pipeLineGraphEdges: PipeGraphEdges, parentGraphInfo: ValidGraphIdentities | null) {
+
+    if (!pipeLineGraphEdges.graph) {
+        pipeLineGraphEdges.graph = {};
+    }
+
+    const subGraphKeys: string[] = Object.keys(pipeLineGraphEdges.graph);
+
+    if (!pipeLineGraphEdges.start) {
+
+        if (!pipeLineGraphEdges.type) {
+            pipeLineGraphEdges.type = null;
+        }
+
+        switch (pipeLineGraphEdges.type) {
+            case 'distribute' || 'branch' || 'dist':
+                pipeLineGraphEdges.start = subGraphKeys;
+                break;
+            case 'first':
+                pipeLineGraphEdges.start = [ subGraphKeys[ 0 ] ];
+                break;
+            case 'last':
+                pipeLineGraphEdges.start = [ subGraphKeys[ subGraphKeys.length - 1 ] ];
+                break;
+            default:
+                pipeLineGraphEdges.start = [];
+                break;
+        }
+    }
+
+    return pipeLineGraphEdges;
+}
+
+export function getGraphEdges(pipeLineId: ValidGraphIdentities): PipeGraphEdges {
+    if (typeof pipeLineId === 'string') {
+        return {
+            id: pipeLineId,
+            start: [],
+            next: []
+        };
+    }
+    return pipeLineId;
+}
+
+export function addItemMakeArray(dict, key, item) {
+    if (!dict[ key ]) {
+        dict[ key ] = [];
+    }
+
+    if (!Array.isArray(dict[ key ])) {
+        dict[ key ] = [];
+    }
+
+    dict[ key ].push(item);
+}
+
+export function resolveChainEdges(pipeLineGraphEdges: ChainGraphEdges, parentGraphInfo: ValidGraphIdentities | null) {
+    if (pipeLineGraphEdges && pipeLineGraphEdges.items) {
+
+        //pipeLineGraphEdges.items = pipeLineGraphEdges.items as ChainItems;
+
+
+        //Convert items to pipline graph items
+        for (let i = 0; i < pipeLineGraphEdges.items.length; i++) {
+            const currentChainGraphItem = pipeLineGraphEdges.items[ i ];
+            pipeLineGraphEdges.items[ i ] = getGraphEdges(currentChainGraphItem);
+        }
+        //pipeLineGraphEdges.items = pipeLineGraphEdges.items as PipeGraphEdges[];
+
+
+        const itemsToChain: PipeGraphEdges[] = (pipeLineGraphEdges.items as PipeGraphEdges[]);
+        const lastLinkingObj = Object.assign({}, pipeLineGraphEdges, {
+            id: `${pipeLineGraphEdges.id}.next`
+        });
+        itemsToChain.push(lastLinkingObj);
+
+        //Set next values according to position
+        for (let i = 1; i < itemsToChain.length; i++) {
+            const lastGraphItem = itemsToChain[ i - 1 ];
+            const currentGraphItem = itemsToChain[ i ];
+
+            addItemMakeArray(lastGraphItem, 'next', currentGraphItem.id);
+        }
+
+        const convertedPipeLineGraphEdges = (pipeLineGraphEdges as PipeGraphEdges);
+        if (!convertedPipeLineGraphEdges.graph) {
+            convertedPipeLineGraphEdges.graph = {};
+        }
+
+        for (let i = 1; i < pipeLineGraphEdges.items.length; i++) {
+            const currentGraphItem = itemsToChain[ i ];
+
+            if (!(pipeLineGraphEdges as PipeGraphEdges).graph) {
+                convertedPipeLineGraphEdges.graph[ `${pipeLineGraphEdges.id}.${i}` ] = currentGraphItem;
+            }
+        }
+
+        delete pipeLineGraphEdges.items;
+
+        return convertedPipeLineGraphEdges;
+    }
+
+    return pipeLineGraphEdges;
+}
+
+function resolveSubgraphIds(resolvedGraph: PipeGraphEdges, namespace: string = "") {
+    if (resolvedGraph.graph) {
+
+        let namespacePrefix = "";
+        if (namespace) {
+            namespacePrefix = namespace + '.';
+        }
+
+
+        for (const subGraphKey in resolvedGraph.graph) {
+            const subGraph = resolvedGraph.graph[ subGraphKey ] as GraphMeta;
+            if (!subGraph.id) {
+                subGraph.id = namespacePrefix + subGraphKey;
+            }
+        }
+    }
+}
+
+function resolveSubgraphs(resolvedGraph: PipeGraphEdges) {
+    if (resolvedGraph.graph) {
+        for (const subGraphKey in resolvedGraph.graph) {
+            const subGraph = resolvedGraph.graph[ subGraphKey ] as GraphMeta;
+
+            const resolvedSubgraph = resolveImplicitEdges(subGraph, resolvedGraph);
+            if (resolvedSubgraph) {
+                resolvedGraph.graph[ subGraphKey ] = resolvedSubgraph;
+            }
+        }
+    }
+}
+
+export function resolveImplicitEdges(pipeLineGraphEdges: ValidGraphIdentities, parentGraphInfo: ValidGraphIdentities | null): PipeGraphEdges | null {
+    if (!pipeLineGraphEdges) {
+        return null;
+    }
+    if (typeof pipeLineGraphEdges === 'string') {
+        return getGraphEdges(pipeLineGraphEdges);
+    }
+
+    resolveChainEdges(pipeLineGraphEdges as ChainGraphEdges, parentGraphInfo);
+    resolveGraphEdges(pipeLineGraphEdges as PipeGraphEdges, parentGraphInfo);
+
+    //resolveSubgraphIds(resolvedGraph, (pipeLineGraphEdges as GraphMeta).id);
+    resolveSubgraphIds(pipeLineGraphEdges);
+    resolveSubgraphs(pipeLineGraphEdges);
+
+    return pipeLineGraphEdges;
+}
+
+
+//pipeLineGraphEdges should stay immutable during wiring
+export function connectPipeLineGraph(pipeLineGraphEdges: PipeGraphEdges, globalConfig: GlobalFunctions, currentKey = "default"): PipeLine | null {
     if (!pipeLineGraphEdges) {
         return null;
     }
 
-    const pipeLineProvider: (id: string) => PipeLineEntry = globalConfig.getPipeLine;
-    const currentPipeEdges: GraphEdges = pipeLineGraphEdges;
+    const getPipeLine: ((id: string) => PipeLineEntry) | undefined = globalConfig.getPipeLine;
+    if (!getPipeLine) {
+        return null;
+    }
+
+    if (!pipeLineGraphEdges.id) {
+        return null;
+    }
+
+    const currentPipeLine: PipeLine<any, any> = getPipeLine(pipeLineGraphEdges.id);
+    //const pipeLineTargets: NodeReferences = pipeLineGraphEdges.start;
+
+    wireRefsOnPipelineProps(pipeLineGraphEdges, currentPipeLine, [ 'start', 'next' ], getPipeLine);
+
+    /*if ((pipeLineGraphEdges as ChainGraphEdges).items) {
+        
+    }*/
+
+
+    /*for (const subGraph of currentPipeLine.graph.) {
+
+    }*/
+
+
+
+    /*const pipeLineProvider: (id: string) => PipeLineEntry = globalConfig.getPipeLine;
+    const currentPipeEdges: NodeReferences = pipeLineGraphEdges;
 
     iterateDictConnect(currentPipeEdges.subchain, globalConfig, 'next', currentKey);
     iterateDictConnect(currentPipeEdges.branches, globalConfig, 'exitparent', currentKey);
 
     if (currentPipeEdges.next) {
 
-    }
+    }*/
 
 
     /*subchain?: GraphSubEdgesDict;
