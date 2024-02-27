@@ -176,10 +176,19 @@ export function getNodeFsProvider(): IResourceProvider {
     return new NodeFsProvider(fs);
 }
 
-export function getDefaultNodePipeLineGraph(globalConfig: GlobalConfig): PipeLine | null {
-    if (!globalConfig.fsProvider) {
-        globalConfig.fsProvider;
+export function getDefaultNodeConfig(): GlobalConfig {
+    const globalConfig: GlobalConfig = {
+        fsProvider: getNodeFsProvider()
+    };
+
+    return globalConfig;
+}
+
+export function getDefaultNodePipeLineGraph(globalConfig?: GlobalConfig): PipeLine | null {
+    if (!globalConfig) {
+        globalConfig = {};
     }
+    Object.assign(getDefaultNodeConfig(), globalConfig);
 
     const defaultGraphEdges: GraphEdges = defaultPipeLineGraphEdges;
     return initConnectPipeLineGraph(defaultGraphEdges, globalConfig);

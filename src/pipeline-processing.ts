@@ -3,7 +3,11 @@ import { mergePropsToArray, multiplyIfArrayAsync, Nullable } from './utils/util'
 export type ProcessingFunction = (input: any) => any;
 //Can be either a complex PipeLine class/dict or simply a processing function mapping input to output;
 export type PipeLineEntry = PipeLine | ProcessingFunction;
-export type PipeLinesDict = Record<string, PipeLineEntry>;
+
+//export type PipeLinesDict = Record<string, PipeLineEntry>;
+
+//Javascript @ < ES2015 not supported as object/record key order is no guaranteed (https://stackoverflow.com/questions/5525795/does-javascript-guarantee-object-property-order)
+export type PipeLinesDict = Record<string, PipeLine>;
 
 export interface PipeLine {
     id?: string;
@@ -16,6 +20,28 @@ export interface PipeLine {
     process: ProcessingFunction;
     isTargetOf?(input: any): Promise<boolean>;
 }
+//Branching behaviours:
+//subchain -> start at 1st element and iterate through chain passing in result of the previous stage -> return result of the subchain
+
+//input state options: input of pipeline / output of subchain
+
+//PipeLine is an abstraction of the processing subgraph of the pipeLine which is executed with .process
+//Types of nodes in a graph:
+//one to one node (passthrough / chaining node) -> receive input from one other node and output to one other node
+//fork/distributer node -> receive input from nodes and distribute to multiple other nodes
+//receiver/collector node -> receive input from serveral nodes and output to one node
+//skipable nodes -> node processing can be skipped when condition applies (input data of certain, type shape or node disabled, .etc)
+
+
+//Internal pipeline: no concept of subchain, branches and next.
+// Rather: source -> graph -> sink
+// Source and sink are vitual elements and required.
+// If no elements are in the sub graph then source and sink are connected
+// data is passed into the pipeline source and taken out the pipeline sink through the .process function
+// Each pipeline represents a node and can be in another graph
+
+//Cicles are allowed, but discouraged (may result in an infinite recursion loop if the 'cicle break' condition is not properly defined)
+
 
 
 async function processOutputToInput(input: any, inputProcessors: any[], processInput: (inputProcessor: any, input: any) => any, skipUndefinedOutput: boolean = true): Promise<any> {
