@@ -1,4 +1,4 @@
-import { mergePropsToArray, multiplyIfArrayAsync, Nullable } from './util';
+import { mergePropsToArray, multiplyIfArrayAsync, Nullable } from './utils/util';
 
 export type ProcessingFunction = (input: any) => any;
 //Can be either a complex PipeLine class/dict or simply a processing function mapping input to output;

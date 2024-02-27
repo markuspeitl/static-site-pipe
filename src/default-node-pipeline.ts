@@ -3,14 +3,15 @@ import { PipeLine, processWithPipeLineGraph } from "./processing-pipeline";
 
 
 import * as path from 'path';
-import * as fs from 'fs';
-import { NullableString, ArrayAndNull, NullableArray } from './util';
+//import * as fs from 'fs';
+import fs from "fs";
+import { NullableString, ArrayAndNull, NullableArray } from './utils/util';
 import { IResourceProvider, GlobalConfig } from './global-config';
 import { defaultPipeLineGraphEdges, initConnectPipeLineGraph } from "./default-pipeline";
 import { GraphEdges } from "./pipeline-connect";
+import { isFilePath, nodeExists, tryReadFile, walk } from "./utils/node-util";
 //Apparently a bit more stable fs implementation: https://www.npmjs.com/package/graceful-fs
 //var fs = require('graceful-fs')
-
 //string to slug
 //https://www.npmjs.com/package/@sindresorhus/slugify
 //https://www.npmjs.com/package/slugify
@@ -106,31 +107,6 @@ import { GraphEdges } from "./pipeline-connect";
 //Transverse json tree and iterate over every node (small pure js)
 //https://github.com/ljharb/js-traverse/blob/main/index.js
 
-async function* walk(dir) {
-    for await (const d of await fs.promises.opendir(dir)) {
-        const entry = path.join(dir, d.name);
-        if (d.isDirectory()) yield* walk(entry);
-        else if (d.isFile()) yield entry;
-    }
-}
-
-function isFilePath(resourceUri: NullableString): boolean {
-    if (!resourceUri) {
-        return false;
-    }
-    if (resourceUri.includes('\n')) {
-        return false;
-    }
-    if (resourceUri.includes('/')) {
-        return true;
-    }
-    const parsedResourcePath = path.parse(resourceUri);
-    if (parsedResourcePath.ext) {
-        return true;
-    }
-
-    return false;
-}
 
 export class NodeFsProvider implements IResourceProvider {
 
@@ -152,7 +128,7 @@ export class NodeFsProvider implements IResourceProvider {
         const dirFilePaths: ArrayAndNull<string> = [];
 
         try {
-            const stat = await this.fs.promises.lstat(dirPath);
+            const stat: fs.Stats = await this.fs.promises.lstat(dirPath);
             if (stat.isFile()) {
                 return [ dirPath ];
             }
@@ -166,7 +142,7 @@ export class NodeFsProvider implements IResourceProvider {
         for await (const filePath of walk(dirPath)) {
             //https://stackoverflow.com/questions/32478698/what-is-the-different-between-stat-fstat-and-lstat-functions-in-node-js
             try {
-                const stat = await this.fs.promises.lstat(filePath);
+                const stat: fs.Stats = await this.fs.promises.lstat(filePath);
                 if (stat.isFile()) {
                     dirFilePaths.push(filePath);
                 }
@@ -185,43 +161,12 @@ export class NodeFsProvider implements IResourceProvider {
         if (!filePath) {
             return null;
         }
-
-        const readFile = async (filePath: string) => {
-
-            if (!filePath) {
-                return null;
-            }
-
-            try {
-                const buffer = await this.fs.promises.readFile(filePath, 'utf8');
-                return buffer;
-            }
-            catch (error) {
-                console.log(`Error reading file: ${filePath}`);
-                console.log(error);
-                return null;
-            }
-        };
-
         //const readFileBuffers: string | null | Array<string | null> = await multiplyIfArrayAsync(readFile, filePaths);
-        return readFile(filePath);
+        return tryReadFile(filePath);
     }
     async exists(filePath: NullableString) {
-        if (!filePath) {
-            return false;
-        }
-        const fileExists = async (filePath: string) => {
-            try {
-                const stat = await this.fs.promises.lstat(filePath);
-                return true;
-            }
-            catch (error) {
-                console.log(`Error reading file: ${filePath}`);
-                return false;
-            }
-        };
         //const existStates: boolean[] = await multiplyIfArrayAsync(fileExists, filePaths);
-        return fileExists(filePath);
+        return nodeExists(filePath);
     }
 }
 

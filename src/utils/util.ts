@@ -1,4 +1,3 @@
-
 export type Nullable<ItemType> = ItemType | null | undefined;
 export type NullableString = Nullable<string>;
 export type SingleOrArray<ItemType> = Array<ItemType> | ItemType;

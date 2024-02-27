@@ -2,7 +2,7 @@ import { GlobalConfig, IResourceProvider } from './global-config';
 import { GraphEdges, connectPipeLineGraph } from './pipeline-connect';
 import { addPipeLine, getNewPipeLine, getPipeLine } from './pipeline-provider';
 import { processWithPipeLineGraph, PipeLineEntry, PipeLine, PipeLinesDict } from './processing-pipeline';
-import { NullableArray, NullableString } from './util';
+import { NullableArray, NullableString } from './utils/util';
 
 export const defaultPipeLineGraphEdges: GraphEdges = {
     subchain: {},

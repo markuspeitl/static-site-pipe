@@ -1,7 +1,7 @@
 import { initializeDefaultPipeLines } from "./default-pipeline";
 import { GlobalConfig, GlobalFunctions } from "./global-config";
 import { PipeLine, PipeLineEntry, getPipeLineFromEntry } from "./processing-pipeline";
-import { Nullable } from './util';
+import { Nullable } from './utils/util';
 
 export interface GraphEdges {
     subchain?: GraphSubEdgesDict;

@@ -1,5 +1,5 @@
 import { PipeLine, PipeLineEntry } from "./processing-pipeline";
-import { NullableArray, NullableString } from "./util";
+import { NullableArray, NullableString } from "./utils/util";
 
 export interface GlobalFunctions {
     getPipeLine: (id: string) => PipeLineEntry;
