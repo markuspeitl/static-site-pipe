@@ -1,21 +1,19 @@
-import { PipeLine } from "./processing-pipeline";
+import { PipeLine, PipeLinesDict } from './pipeline-processing';
 
 
-const pipeLineStore = {
 
-};
+const pipeLineStore: PipeLinesDict<unknown, unknown> = {};
 
-export function getPipeLine(id: string): PipeLine {
+export function getPipeLine(id: string): PipeLine<unknown, unknown> {
 
     if (!pipeLineStore[ id ]) {
-
-        pipeLineStore[ id ] = {};
+        pipeLineStore[ id ] = getNewPipeLine(id);
     }
 
     return pipeLineStore[ id ];
 }
 
-export function addPipeLine(pipeLine: PipeLine, id?: string): string {
+export function addPipeLine(pipeLine: PipeLine<unknown, unknown>, id?: string): string {
 
     if (id) {
         pipeLine.id = id;
@@ -35,10 +33,14 @@ export function addPipeLine(pipeLine: PipeLine, id?: string): string {
     return id;
 }
 
-export function getNewPipeLine(id: string): PipeLine {
+export function getNewPipeLine(id: string): PipeLine<unknown, unknown> {
     return {
         id: id,
         isTargetOf: async () => true,
         process: () => ''
     };
+}
+
+export function getAllPipeLines(): PipeLinesDict<unknown, unknown> {
+    return pipeLineStore;
 }
