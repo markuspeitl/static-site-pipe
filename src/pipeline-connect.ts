@@ -1,6 +1,6 @@
 import { ChainGraphEdges, ChainItems, GraphMeta, NodeReferences, PipeGraphEdges, ValidGraphIdentities, initializeDefaultPipeLines } from "./default-pipeline";
 import { GlobalConfig, GlobalFunctions } from "./global-config";
-import { PipeLine, getPipeLineFromEntry } from './pipeline-processing';
+import { PipeLine, PipeLinesDict, getPipeLineFromEntry } from './pipeline-processing';
 import { getAllPipeLines } from "./pipeline-provider";
 import { Nullable } from './utils/util';
 
@@ -19,41 +19,6 @@ export function iterateDictConnect(edgesDict: GraphSubEdgesDict | null | undefin
         connectPipeLineGraph(edgesDict[ edgeTargetKey ], globalConfig, edgeTargetKey);
     }
 }
-
-function getArrayFrom<ItemType>(item?: ItemType | ItemType[]): ItemType[] {
-    if (!item) {
-        return [];
-    }
-
-    if (!Array.isArray(item)) {
-        return [ item ];
-    }
-
-    return item;
-}
-
-function wireRefsToPipelineTargets(currentGraphEdges: PipeGraphEdges, currentGraphPipe: PipeLine<any, any>, edgesAndGraphKey: string, getPipeLineFn: any) {
-
-    const pipeLineTargets: NodeReferences = currentGraphEdges[ edgesAndGraphKey ];
-
-    currentGraphPipe.start = getArrayFrom(currentGraphPipe.start);
-    if (pipeLineTargets) {
-        for (const targetKey of pipeLineTargets) {
-            const selectedTarget = getPipeLineFn(targetKey);
-
-            currentGraphPipe.start.push(selectedTarget);
-        }
-    }
-}
-
-//Replace references to pipelines from edgesGraph in actual pipeline with actual references
-function wireRefsOnPipelineProps(currentGraphEdges: PipeGraphEdges, currentGraphPipe: PipeLine<any, any>, edgesAndGraphKeys: string[], getPipeLineFn: any) {
-
-    for (const key of edgesAndGraphKeys) {
-        wireRefsToPipelineTargets(currentGraphEdges, currentGraphPipe, key, getPipeLineFn);
-    }
-}
-
 
 // dir -> dir.start -> chain -> chain.start -> walkDir -> printDirFiles -> chain.next -> dir.next
 
@@ -109,17 +74,6 @@ export function getGraphEdges(pipeLineId: ValidGraphIdentities): PipeGraphEdges 
     return pipeLineId;
 }
 
-export function addItemMakeArray(dict, key, item) {
-    if (!dict[ key ]) {
-        dict[ key ] = [];
-    }
-
-    if (!Array.isArray(dict[ key ])) {
-        dict[ key ] = [];
-    }
-
-    dict[ key ].push(item);
-}
 
 export function resolveChainEdges(pipeLineGraphEdges: ChainGraphEdges, parentGraphInfo: ValidGraphIdentities | null) {
     if (pipeLineGraphEdges && pipeLineGraphEdges.items) {
@@ -231,7 +185,7 @@ export function resolveImplicitEdges(pipeLineGraphEdges: ValidGraphIdentities, p
     return pipeLineGraphEdges;
 }
 
-function stripGraphTargetsArray<Input, Output>(pipeLine: PipeLine<Input, Output>, targetKey: string) {
+function stripGraphTargetsArray(pipeLine: PipeLine, targetKey: string) {
 
     if (pipeLine[ targetKey ] && pipeLine[ targetKey ].length > 0) {
         for (const pipeLineLinkedGraph of pipeLine[ targetKey ]) {
@@ -242,7 +196,7 @@ function stripGraphTargetsArray<Input, Output>(pipeLine: PipeLine<Input, Output>
     pipeLine[ targetKey ] = [];
 }
 
-export function stripAllGraphEdges<Input, Output>(pipeLine: PipeLine<Input, Output>): PipeLine<Input, Output> {
+export function stripAllGraphEdges<Input, Output>(pipeLine: PipeLine): PipeLine {
     stripGraphTargetsArray(pipeLine, 'start');
     stripGraphTargetsArray(pipeLine, 'next');
     return pipeLine;
@@ -251,21 +205,92 @@ export function stripAllGraphEdges<Input, Output>(pipeLine: PipeLine<Input, Outp
 export function stripAllGraphEdgesOfProvider() {
     const allPipeLines = getAllPipeLines();
     for (const key in allPipeLines) {
-        const pipeLine: PipeLine<unknown, unknown> = allPipeLines[ key ];
+        const pipeLine: PipeLine = allPipeLines[ key ];
         pipeLine.start = [];
         pipeLine.next = [];
     }
 }
 
 
+function wireRefsToPipelineTargets(currentGraphEdges: PipeGraphEdges, currentGraphPipe: PipeLine, edgesAndGraphKey: string, getPipeLineFn: any) {
+
+    const pipeLineTargets: NodeReferences = currentGraphEdges[ edgesAndGraphKey ];
+
+    currentGraphPipe.start = getArrayFrom(currentGraphPipe.start);
+    if (pipeLineTargets) {
+        for (const targetKey of pipeLineTargets) {
+            const selectedTarget = getPipeLineFn(targetKey);
+
+            currentGraphPipe.start.push(selectedTarget);
+        }
+    }
+}
+
+//Replace references to pipelines from edgesGraph in actual pipeline with actual references
+function wireRefsOnPipelineProps(currentGraphEdges: PipeGraphEdges, currentGraphPipe: PipeLine, edgesAndGraphKeys: string[], getPipeLineFn: any) {
+
+    for (const key of edgesAndGraphKeys) {
+        wireRefsToPipelineTargets(currentGraphEdges, currentGraphPipe, key, getPipeLineFn);
+    }
+}
+
+export function resolvePipeLineId(pipeLineId: string, pipeLinePool: PipeLinesDict): PipeLine | null {
+
+    if (!pipeLineId || pipeLineId === 'root' || pipeLineId === 'default' || pipeLineId === 'top') {
+        return pipeLinePool[ 'default' ];
+    }
+
+    if (pipeLinePool[ pipeLineId ]) {
+        return pipeLinePool[ pipeLineId ];
+    }
+
+    if (pipeLineId.includes('.')) {
+        const pathIdParts = pipeLineId.split('.');
+
+        //const parentContext = pipeLinePool;
+        let selectedPipeLine: PipeLine | null = pipeLinePool[ pathIdParts[ 0 ] ];
+        for (const pipeLineId of pathIdParts) {
+            selectedPipeLine = selectedPipeLine.graph[ pipeLineId ];
+            if (!selectedPipeLine) {
+                break;
+            }
+        }
+        return selectedPipeLine;
+    }
+}
+
+export function wireUpPipeLineGraph(edgesStructureGraph: PipeGraphEdges, pipeLinePool: PipeLinesDict): PipeLine | null {
+    if (!edgesStructureGraph || !pipeLinePool) {
+        return null;
+    }
+
+    const wiredPipeLine: PipeLine = {
+        id: 'default',
+        start: [],
+        next: [],
+        process: async () => {
+
+        },
+        isTargetOf: async () => {
+            return true;
+        }
+
+    };
+
+    const resolvedEdgesGraph: PipeGraphEdges | null = resolveImplicitEdges(edgesStructureGraph, null);
+
+
+
+    return wiredPipeLine;
+}
 
 //pipeLineGraphEdges should stay immutable during wiring
-export function connectPipeLineGraph(pipeLineGraphEdges: PipeGraphEdges, globalConfig: GlobalFunctions, currentKey = "default"): PipeLine<unknown, unknown> | null {
+export function connectPipeLineGraph(pipeLineGraphEdges: PipeGraphEdges, globalConfig: GlobalFunctions, currentKey = "default"): PipeLine | null {
     if (!pipeLineGraphEdges) {
         return null;
     }
 
-    const getPipeLine: ((id: string) => PipeLine<any, any>) | undefined = globalConfig.getPipeLine;
+    const getPipeLine: ((id: string) => PipeLine) | undefined = globalConfig.getPipeLine;
     if (!getPipeLine || getPipeLine === undefined) {
         return null;
     }
@@ -274,7 +299,7 @@ export function connectPipeLineGraph(pipeLineGraphEdges: PipeGraphEdges, globalC
         return null;
     }
 
-    const currentPipeLine: PipeLine<any, any> = getPipeLine(pipeLineGraphEdges.id);
+    const currentPipeLine: PipeLine = getPipeLine(pipeLineGraphEdges.id);
     //const pipeLineTargets: NodeReferences = pipeLineGraphEdges.start;
 
     const explicitEdgesGraph: PipeGraphEdges | null = resolveImplicitEdges(pipeLineGraphEdges, null);
@@ -287,7 +312,7 @@ export function connectPipeLineGraph(pipeLineGraphEdges: PipeGraphEdges, globalC
     function connectSubGraphs(key: string, subGraph: PipeGraphEdges, parentGraph: PipeGraphEdges) {
 
         if (getPipeLine) {
-            //const currentPipeLine: PipeLine<any, any> = getPipeLine(key);
+            //const currentPipeLine: PipeLine = getPipeLine(key);
             connectPipeLineGraph(subGraph, globalConfig, currentPipeLine.id);
         }
         /*const resolvedSubgraph = resolveImplicitEdges(subGraph, parentGraph);
@@ -332,7 +357,7 @@ export function connectPipeLineGraph(pipeLineGraphEdges: PipeGraphEdges, globalC
     //return pipeLineProvider('default') as PipeLine;
 }
 
-export function connectPipeLines(pipeEntry1: PipeLineEntry, pipeEntry2: PipeLineEntry): PipeLine | null {
+export function connectPipeLines(pipeEntry1: PipeLine, pipeEntry2: PipeLine): PipeLine | null {
 
     if (!pipeEntry1 || !pipeEntry2) {
         return null;
@@ -350,7 +375,7 @@ export function connectPipeLines(pipeEntry1: PipeLineEntry, pipeEntry2: PipeLine
     return null;
 }
 
-export function chainPipeLines(...pipeLines: PipeLineEntry[]) {
+export function chainPipeLines(...pipeLines: PipeLine[]) {
     if (pipeLines.length <= 2) {
         return;
     }

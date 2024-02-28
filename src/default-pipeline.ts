@@ -122,7 +122,8 @@ const defaultPipeLineGraphEdges: PipeGraphEdges = {
                             next: [ 'print', 'null' ],
                         },
                         'printDirFiles',
-                    ]
+                    ],
+                    'dir.end'
                 ),
             },
             next: 'file',

@@ -1,6 +1,8 @@
 export type Nullable<ItemType> = ItemType | null | undefined;
 export type NullableString = Nullable<string>;
 export type SingleOrArray<ItemType> = Array<ItemType> | ItemType;
+export type ItemArrayOrNull<ItemType> = Nullable<Array<ItemType> | ItemType>;
+
 export type ArrayAndNull<ItemType> = Array<Nullable<ItemType>>;
 export type NullableArray<ItemType> = Nullable<Array<Nullable<ItemType>>>;
 
@@ -96,4 +98,50 @@ export function isTypeOrItemType(value: any | any[], matchType: string): boolean
     }
 
     return false;
+}
+
+
+
+const keySeperationToken = '.';
+export function getKeyFromDict(dict: Object, key?: string): any | undefined {
+    if (!key) {
+        return dict;
+    }
+
+    const keyParts = key.split(keySeperationToken);
+    //const reversedParts = keyParts.reverse();
+
+    let currentLevelDict: Object = dict;
+    for (const key of keyParts) {
+        currentLevelDict = currentLevelDict[ key ];
+        if (currentLevelDict === undefined) {
+            return undefined;
+        }
+    }
+    return currentLevelDict;
+}
+
+export function getArrayFrom<ItemType>(item?: ItemType | ItemType[]): ItemType[] {
+    if (!item) {
+        return [];
+    }
+
+    if (!Array.isArray(item)) {
+        return [ item ];
+    }
+
+    return item;
+}
+
+
+export function addItemMakeArray(dict, key, item) {
+    if (!dict[ key ]) {
+        dict[ key ] = [];
+    }
+
+    if (!Array.isArray(dict[ key ])) {
+        dict[ key ] = [];
+    }
+
+    dict[ key ].push(item);
 }
