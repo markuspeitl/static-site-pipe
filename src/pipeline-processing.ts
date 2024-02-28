@@ -1,12 +1,13 @@
-import { addItemMakeArray } from './pipeline-connect';
+import { IGraphNode, runGraphNode } from './pipeline-graph';
 import { getNewPipeLine } from './pipeline-provider';
 import { getArrayFrom, ItemArrayOrNull, mergePropsToArray, multiplyIfArrayAsync, Nullable, SingleOrArray } from './utils/util';
 
 export type ProcessingFunction<InputType> = (input: InputType) => Promise<InputType>;
 
+//export type InputTargetFn = (input: any) => Promise<boolean>
 export interface PipeLineProcessor<InputType> {
     //perform processing operations on data with this stage
-    process: ProcessingFunction<InputType>;
+    process(input: InputType): Promise<InputType>;
 
     //Basically an entry guard (rejects the input if it does not match)
     isTargetOf?(input: InputType): Promise<boolean>;
@@ -20,15 +21,64 @@ export interface PipeLineProcessor<InputType> {
 }
 export type PipeLinesDict<InputType, OutputType> = Record<string, PipeLine<InputType, OutputType>>;*/
 
-export interface PipeLine extends PipeLineProcessor<any> {
+
+
+export interface PipeLine extends IGraphNode {
     id?: string;
-    start?: SingleOrArray<PipeLine>;
-    next?: SingleOrArray<PipeLine>;
+    namespace?: Record<string, PipeLine>;
+    //start?: SingleOrArray<PipeLine>;
+    //next?: SingleOrArray<PipeLine>;
 
     //All pipelines contained in this stage, (in no particular order as the 'next' property is used to reach the stages contained)
-    pool?: PipeLinesDict;
+    //pool?: PipeLinesDict;
 }
 export type PipeLinesDict = Record<string, PipeLine>;
+
+function* pipeLinePathCollectionNodes(pipeLine: PipeLine, targetCollectionKey: string) {
+    const pipeLines: PipeLine[] | undefined = getArrayFrom(pipeLine[ targetCollectionKey ]);
+    if (pipeLines) {
+        for (const item of pipeLines) {
+            yield* pipeLinePathNodes(item);
+            yield item;
+        }
+    }
+}
+
+function* pipeLinePathNodes(pipeLine: PipeLine) {
+    if (!pipeLine.next) {
+        return;
+    }
+
+    //yield* pipeLinePathCollectionNodes(pipeLine, 'start');
+    yield* pipeLinePathCollectionNodes(pipeLine, 'next');
+}
+
+function clearPipelineEscapeEdges(pipeLine: PipeLine) {
+    //const pipeLineId: string = pipeLine.id;
+    //const allSubPipeLines: PipeLine[] = [];
+
+    const pipeLineNodes: PipeLine[] = Array.from(pipeLinePathNodes(pipeLine));
+
+    for (const node of pipeLinePathNodes(pipeLine)) {
+
+        const nextTarget = node.next;
+        if (!pipeLineNodes.includes(nextTarget) && nextTarget !== pipeLine) {
+            node.next = null;
+        }
+    }
+}
+
+function runPipeline(pipeLineId: string, pipeLinePool: PipeLinesDict, pipeLineResults: Record<string, any> = {}) {
+    const pipeLine = pipeLinePool[ pipeLineId ];
+
+    //Deep clone (not good performance, but should work)
+    const clonedPipeLine = structuredClone(pipeLine);
+
+    //Prevent graph from escaping pipeline through a next value pointing to another pipeline (that is not a part of this pipeline)
+    clearPipelineEscapeEdges(clonedPipeLine);
+
+    return runGraphNode(pipeLine, pipeLineResults);
+}
 
 
 //Maybe wrap .process during execution and keep track of some metadata in the wrapper
@@ -81,7 +131,7 @@ async function processOutputToInput(input: any, inputProcessors: any[], processI
     return currentOutput;
 }
 
-
+/*
 async function callPipeLineProcess(input: any, pipeLineEntry: PipeLineEntry): Promise<any> {
     const pipeLine = getPipeLineFromEntry(pipeLineEntry);
 
@@ -112,14 +162,11 @@ async function processWithPipeLine(input: any, pipeLine: PipeLineEntry): Promise
 
     return await processStages(input, processingFnsStack);
 }
-
+*/
 //Select sub pipeline to process through isTargetOf (branching)
-async function processWithTargeted(input: any, pipeLineOptions: PipeLinesDict): Promise<any> {
+/*async function processWithTargeted(input: any, pipeLineOptions: PipeLinesDict): Promise<any> {
     for (const pipeLineId in pipeLineOptions) {
         return processWithPipeLine(input, pipeLineOptions[ pipeLineId ]);
-        /*if (result) {
-            return result;
-        }*/
     }
     return input;
 }
@@ -144,20 +191,17 @@ export function getPipeLineFromEntry(pipeLineEntry?: PipeLineEntry, id?: string)
     }
 
     throw new Error(`Invalid pipeLine in 'getPipeLine' needs to have .process method or be a function, was: ${pipeLineEntry}`);
-}
+}*/
 
-export async function processWithPipeLineGraph(input: any, pipeLineEntry: Nullable<PipeLineEntry>, options?: any): Promise<any> {
+/*export async function processWithPipeLineGraph(input: any, pipeLineEntry: Nullable<PipeLineEntry>, options?: any): Promise<any> {
     //let graph = options.graph;
-    /*if (!graph) {
-        graph = getDefaultBaseGraph(options);
-    }*/
     if (!pipeLineEntry) {
         return null;
     }
     const pipeLine: PipeLine = getPipeLineFromEntry(pipeLineEntry);
     return await pipeLine.process(input);
     //return await processWithTargeted(input, pipeLine);
-}
+}*/
 
 
 //Assume that 'pipeLine' is an explicit graph (no implicit context derived edges -> data at the pipeLines next node can be detected if the last pipelines next references to it)
@@ -234,7 +278,7 @@ function createStartNode(pipeLine: PipeLine) {
     run(): Promise<any>;
     read(): Promise<any>;
 }*/
-
+/*
 export function getNode(connectedNodes: GraphNode[] | undefined, processingFn: any): GraphNode {
     //const connectedNodes: GraphNode[] | undefined = connectedNodes;
 
@@ -283,9 +327,9 @@ function nodeFromPipeline(currentPipeLine: PipeLine, connectedPipeLines: SingleO
 
 function clearOutgoingEdges(targetPipeLine: PipeLine): void {
 
-}* /;;
+}
 
-
+*/
 
 /*function getCollectionPipeLine() {
     const collectedResults: any[] = [];
@@ -296,175 +340,10 @@ function clearOutgoingEdges(targetPipeLine: PipeLine): void {
 }*/
 
 
-function isNextOfPrevious() {
-    //If the edge going from the last element originated from the 'next' node -> skip start nodes
-    if (previousPipeLine.next === pipeLine) {
-
-    }
-}
-
-
-
-
-
-export interface GraphNode extends PipeLineProcessor<any> {
-    next?: GraphNode | null;
-}
-
-export interface IEndNode extends GraphNode {
-    data: any | any[] | null;
-}
-
-export interface ScopedNode extends GraphNode {
-    start: GraphNode | null;
-    end: GraphNode | null;
-}
-
-export class EndNode implements IEndNode {
-    data: any | any[] | null = null;
-    next?: GraphNode | null | undefined;
-
-    constructor (parentNode: ScopedNode) {
-        /*if (parentNode.next) {
-            this.next = parentNode.next;
-        }*/
-        parentNode.end = this;
-    }
-
-    async process(input: any): Promise<any | any[] | null> {
-
-        if (!this.data) {
-            this.data = input;
-        } else if (!Array.isArray(this.data)) {
-            this.data = [ this.data ];
-        } else {
-            this.data.push(input);
-        }
-
-        return this.data;
-    }
-
-    async isTargetOf?(input: any): Promise<boolean> {
-        return true;
-    }
-}
-export class StartNode implements GraphNode {
-    next?: GraphNode | null | undefined;
-
-    constructor (parentNode: ScopedNode) {
-        if (parentNode.next) {
-            this.next = parentNode.next;
-        }
-        parentNode.end = this;
-    }
-
-    async process(input: any): Promise<any | any[] | null> {
-        return input;
-    }
-
-    async isTargetOf?(input: any): Promise<boolean> {
-        return true;
-    }
-}
-
-/*export class GraphScopedNode implements ScopedNode { 
+/*export class GraphScopedNode implements ScopedNode {
 }*/
 
 
-
-function isScopeNode(node: any | ScopedNode): boolean {
-    return Boolean(node.start) && Boolean(node.end);
-}
-function isEndNode(node: any | EndNode): boolean {
-    return Boolean(node.data);
-}
-
-async function canProcess(node, inputData: any) {
-    return node.isTargetOf(inputData);
-}
-
-
-//3 types of node:
-//GraphNode: Common node -> can process input data and has a 'next' property pointing to the nodes it is connected to
-//EndNode: Acts as a common node, but has a data property in which processed data passing through it is collected
-//ScopedNode: Is a node that 'contains' another node path, thise scoping behaviour is simulated by having a special 'start' node at the beginning of the scope
-// and an 'end' node at the end of the scope (the result of the subpath can be read through 'end' and new data can be put into it with 'start')
-
-//Nodes that do not have graph items do not need a 'start' or 'end' node
-//Though for consistencies sake insert (and optimize later)
-async function runThroughNodeChain(pipeLine: PipeLine, inputData: any) {
-    let processedInput: any = pipeLine.process(inputData);
-
-    if (isScopeNode(pipeLine)) {
-        processedInput = runGraphNode(pipeLine as ScopedNode, processedInput);
-    }
-
-    const nextPipeLineTargets: PipeLine[] | undefined = getArrayFrom(pipeLine.next);
-    //const nodeOutput: any[] = [];
-    if (nextPipeLineTargets) {
-        for (const targetNode of nextPipeLineTargets) {
-            const branchNextResult = await runWithPipeline(processedInput, targetNode, pipeLine);
-            /*if (pipeLineResults) {
-                addItemMakeArray(pipeLineResults, targetNode.id, branchNextResult);
-            }*/
-        }
-    }
-}
-
-async function runGraphNode(pipeLineNode: GraphNode, inputData: any) {
-
-    /*if (isEndNode(pipeLineNode)) {
-        return (pipeLineNode as EndNode).data;
-    }*/
-
-    if (!isScopeNode(pipeLineNode)) {
-        return runThroughNodeChain(pipeLineNode as PipeLine, inputData);
-    }
-
-    if (!canProcess(pipeLineNode, inputData)) {
-        return inputData;
-    }
-
-    const node = pipeLineNode as ScopedNode;
-    const processedInput = await node.process(inputData);
-
-    if (!node.next) {
-        return processedInput;
-    }
-
-    const startNode = node.start; //or default start node
-    const endNode: EndNode = node.end as EndNode; //or default end node
-
-    if (!startNode) {
-        return processedInput;
-    }
-
-    //Split open path between endNode and the next Node
-    const nextAfterEndNode: GraphNode | null | undefined = endNode?.next;
-
-    if (nextAfterEndNode) {
-        endNode.next = null;
-        endNode.data = null;
-    }
-
-    //Process path starting from start until termination (processedOutput can be from any node, also not of this subgraph -> !== endNode.data)
-    const processedOutput = runGraphNode(startNode, processedInput);
-
-    if (!endNode) {
-        return processedOutput;
-    }
-
-    if (!nextAfterEndNode) {
-        return endNode?.data;
-    }
-
-    //Restore path between endnode and the next path
-    endNode.next = nextAfterEndNode;
-    //Start processing in next path
-    const nextPathOutput = runGraphNode(endNode, endNode.data);
-    //return nextPathOutput;
-    return endNode?.data;
-}
 
 
 /*
@@ -519,7 +398,7 @@ async function runWithPipeline(inputData: any, pipeLine: PipeLine, pipeLineResul
     if (nextPipeLineTargets) {
         for (const targetNode of nextPipeLineTargets) {
 
-            //const previousPipeLine = 
+            //const previousPipeLine =
             const nextPipeLineResult = await runWithPipeline(targetNode, pipeLine, pipeLineResults);
         }
     }
@@ -534,51 +413,6 @@ async function runWithPipeline(inputData: any, pipeLine: PipeLine, pipeLineResul
     return graphNodeResults;
 }*/
 
-function* pipeLinePathCollectionNodes(pipeLine: PipeLine, targetCollectionKey: string) {
-    const pipeLines: PipeLine[] | undefined = getArrayFrom(pipeLine[ targetCollectionKey ]);
-    if (pipeLines) {
-        for (const item of pipeLines) {
-            yield* pipeLinePathNodes(item);
-            yield item;
-        }
-    }
-}
-
-function* pipeLinePathNodes(pipeLine: PipeLine) {
-    if (!pipeLine.start && !pipeLine.next) {
-        return;
-    }
-
-    yield* pipeLinePathCollectionNodes(pipeLine, 'start');
-    yield* pipeLinePathCollectionNodes(pipeLine, 'next');
-}
-
-function clearPipelineEscapeEdges(pipeLine: PipeLine) {
-    //const pipeLineId: string = pipeLine.id;
-    //const allSubPipeLines: PipeLine[] = [];
-
-    const pipeLineNodes: PipeLine[] = Array.from(pipeLinePathNodes(pipeLine));
-
-    for (const node of pipeLinePathNodes(pipeLine)) {
-
-        const nextTarget = node.next;
-        if (!pipeLineNodes.includes(nextTarget) && nextTarget !== pipeLine) {
-            node.next = null;
-        }
-    }
-}
-
-function runPipeline(pipeLineId: string, pipeLinePool: PipeLinesDict, pipeLineResults: Record<string, any> = {}) {
-    const pipeLine = pipeLinePool[ pipeLineId ];
-
-    //Deep clone (not good performance, but should work)
-    const clonedPipeLine = structuredClone(pipeLine);
-
-    //Prevent graph from escaping pipeline through a next value pointing to another pipeline (that is not a part of this pipeline)
-    clearPipelineEscapeEdges(clonedPipeLine);
-
-    return runWithPipeline(pipeLine, pipeLineResults);
-}
 
 
 /*export async function graphRunner(pipeLine: PipeLine, input: any): Promise<any> {

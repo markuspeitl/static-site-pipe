@@ -1,3 +1,4 @@
+import { IoFunction } from './default-pipeline';
 import { PipeLine, PipeLinesDict } from './pipeline-processing';
 
 
@@ -37,7 +38,15 @@ export function getNewPipeLine(id: string): PipeLine {
     return {
         id: id,
         isTargetOf: async () => true,
-        process: () => ''
+        process: () => Promise.resolve('')
+    };
+}
+
+export function getPipeLineFromFn(fn: IoFunction): PipeLine {
+    return {
+        id: fn.name,
+        isTargetOf: async () => true,
+        process: fn
     };
 }
 

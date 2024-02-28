@@ -1,8 +1,9 @@
 import { GlobalConfig, IResourceProvider } from './global-config';
-import { GraphEdges, connectPipeLineGraph } from './pipeline-connect';
-import { addPipeLine, getNewPipeLine, getPipeLine } from './pipeline-provider';
-import { processWithPipeLineGraph, PipeLineEntry, PipeLine, PipeLinesDict } from './pipeline-processing';
+import { addPipeLine, getAllPipeLines, getNewPipeLine, getPipeLine, getPipeLineFromFn } from './pipeline-provider';
+import { PipeLine, PipeLinesDict } from './pipeline-processing';
 import { ItemArrayOrNull, NullableArray, NullableString } from './utils/util';
+import { runGraphNode } from './pipeline-graph';
+import { createPipeLineGraph, PipeLineInfo } from './pipeline-connect';
 
 const chainExplicitSample = {
     source: 'pipe1',
@@ -76,19 +77,22 @@ export interface GraphMeta {
     start?: NodeReferences;
     type?: GraphTypeOptions;
     next?: NodeReferences;
+
+    //Non data property --> computed
+    parent?: PipeGraphEdges;
 }
 
-export type ValidGraphIdentities = string | PipeGraphEdges | ChainGraphEdges;
+export type LinkGraphValue = string | PipeGraphEdges | ChainGraphEdges;
 
 export interface PipeGraphEdges extends GraphMeta {
     graph?: PipeGraphEdgesDict;
 }
-export type ChainItems = Array<ValidGraphIdentities>;
+export type ChainItems = Array<LinkGraphValue>;
 export interface ChainGraphEdges extends GraphMeta {
     items?: ChainItems;
 }
 export type PipeGraphEdgesDict = {
-    [ pipeLineId: string ]: ValidGraphIdentities;
+    [ pipeLineId: string ]: LinkGraphValue;
 };
 
 
@@ -107,7 +111,7 @@ function chainEdges(items: ChainItems, nextAfter?: string | string[]) {
 
 //Adding 'graph' subproperty makes this somewhat difficult to read, but makes it so it can be properly typed
 //Note the edges information is discarded during the connection process (it is meta data) and will be represented through references for the actual pipelines.
-const defaultPipeLineGraphEdges: PipeGraphEdges = {
+export const defaultPipeLineGraphEdges: PipeGraphEdges = {
     start: [ 'dir', 'file', 'template' ], //Start defines the entrypoint into the pipeline
     //type: 'dist',
     graph: {
@@ -127,7 +131,6 @@ const defaultPipeLineGraphEdges: PipeGraphEdges = {
                 ),
             },
             next: 'file',
-
         },
         file: {
             start: 'chain',
@@ -287,28 +290,80 @@ const defaultPipeLineGraphEdges: PipeGraphEdges = {
     next: undefined,
 };*/
 
-function createSimplePipeLine(id: string, isTargetOf: (input: any) => Promise<boolean>, stages: PipeLinesDict, globalConfig: GlobalConfig) {
+export type IoFunction = (input: any) => Promise<any>;
+export type PipeOrFn = PipeLine | IoFunction;
 
-    //const getPipeLine: (id: string) => PipeLineEntry = globalConfig.getPipeLine;
-    const getNewPipeLine: (id: string) => PipeLine = globalConfig.getNewPipeLine;
-    const pipeLine: PipeLine = getNewPipeLine(id);
+function toPipeLine(fn: IoFunction | PipeLine): PipeLine | null {
+    if ((fn as PipeLine).process) {
+        return fn as PipeLine;
+    }
 
-    if (typeof pipeLine === 'object' && pipeLine.subchain !== undefined) {
+    if (!fn) {
+        return null;
+    }
+    return getPipeLineFromFn(fn as IoFunction);
+}
+
+function resolvePipeLineFunctions(pool: Record<string, PipeOrFn>): PipeLinesDict {
+
+    const resolvedPool: PipeLinesDict = {};
+    for (const key in pool) {
+        const item = toPipeLine(pool[ key ]);
+        if (item) {
+            resolvedPool[ key ] = item;
+        }
+    }
+    return resolvedPool;
+}
+
+function createSimplePipeLine(id: string, isTargetOf: (input: any) => Promise<boolean>, chainStagesPipePool: Record<string, PipeOrFn>, globalConfig: GlobalConfig): PipeLine | null {
+
+    //const getPipeLine: (id: string) => PipeLine = globalConfig.getPipeLine;
+
+    if (globalConfig.getNewPipeLine) {
+        const getNewPipeLine: (id: string) => PipeLine = globalConfig.getNewPipeLine;
+
+        const pipeLine: PipeLine = getNewPipeLine(id);
+
+        const graphEdges: PipeGraphEdges = {
+            graph: {
+                chain: {
+                    items: [
+                        ...Object.keys(chainStagesPipePool)
+                    ]
+                }
+            }
+        };
+
+        const pipeLinePool: PipeLinesDict = resolvePipeLineFunctions(chainStagesPipePool);
+
+        const pipeLineInfo: PipeLineInfo | null = createPipeLineGraph(id, graphEdges, pipeLinePool, globalConfig);
+        if (pipeLineInfo) {
+            return pipeLineInfo?.entry;
+        }
+    }
+
+    return null;
+
+
+    /*if (typeof pipeLine === 'object' && pipeLine.subchain !== undefined) {
         pipeLine.isTargetOf = isTargetOf;
 
         for (const key in stages) {
             const currentPipeLine = stages[ key ];
             pipeLine.subchain[ key ] = currentPipeLine;
         }
-    }
-
-    return pipeLine;
+    }*/
 }
 
-function initDirToFilesPipeLine(globalConfig: GlobalConfig): PipeLine {
+function initDirToFilesPipeLine(globalConfig: GlobalConfig): PipeLine | null {
 
-    const fsProvider: IResourceProvider = globalConfig.fsProvider;
-    const pipeLine: PipeLine = createSimplePipeLine(
+    if (!globalConfig?.fsProvider) {
+        throw new Error("Can not initialized directory pipeline -> missing fsProvider on globalConfig");
+    }
+
+    const fsProvider: IResourceProvider = globalConfig?.fsProvider;
+    const pipeLine: PipeLine | null = createSimplePipeLine(
         'dir',
         async (input: any) => {
             if (!input || typeof input !== 'string') {
@@ -342,10 +397,14 @@ function initDirToFilesPipeLine(globalConfig: GlobalConfig): PipeLine {
     return pipeLine;
 }
 
-function initFilesToBuffersPipeLine(globalConfig: GlobalConfig): PipeLine {
+function initFilesToBuffersPipeLine(globalConfig: GlobalConfig): PipeLine | null {
+
+    if (!globalConfig?.fsProvider) {
+        throw new Error("Can not initialized files pipeline -> missing fsProvider on globalConfig");
+    }
 
     const fsProvider: IResourceProvider = globalConfig.fsProvider;
-    const pipeLine: PipeLine = createSimplePipeLine(
+    const pipeLine: PipeLine | null = createSimplePipeLine(
         'file',
         async (input: any) => {
             if (!input || typeof input !== 'string') {
@@ -371,20 +430,27 @@ function initFilesToBuffersPipeLine(globalConfig: GlobalConfig): PipeLine {
     return pipeLine;
 }
 
-export function initializeDefaultPipeLines(globalConfig: GlobalConfig) {
-    const dirPipeLine: PipeLine = initDirToFilesPipeLine(globalConfig);
-    const filePipeLine: PipeLine = initFilesToBuffersPipeLine(globalConfig);
+export function initializeDefaultPipeLines(globalConfig: GlobalConfig): PipeLinesDict {
+    const dirPipeLine: PipeLine | null = initDirToFilesPipeLine(globalConfig);
+    const filePipeLine: PipeLine | null = initFilesToBuffersPipeLine(globalConfig);
+
+    if (!dirPipeLine || !filePipeLine) {
+        throw new Error('Failes to initialized dirPipeLine or filePipeLine');
+    }
+
     addPipeLine(dirPipeLine);
     addPipeLine(filePipeLine);
     addPipeLine(filePipeLine, 'template');
 
-    return getPipeLine;
+    return getAllPipeLines();
+
+    //return getPipeLine;
 }
 
-export function initConnectPipeLineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: GlobalConfig): PipeLine | null {
-    const getPipeLine: (id: string) => PipeLineEntry = initializeDefaultPipeLines(globalConfig);
+/*export function initConnectPipeLineGraph(pipeLineGraphEdges: GraphEdges, globalConfig: GlobalConfig): PipeLine | null {
+    const getPipeLine: (id: string) => PipeLine = initializeDefaultPipeLines(globalConfig);
     return connectPipeLineGraph(pipeLineGraphEdges, globalConfig);
-}
+}*/
 
 export async function process(input: any, options: any): Promise<any> {
     //let graph = options.graph;
@@ -392,5 +458,5 @@ export async function process(input: any, options: any): Promise<any> {
 
     const defaultPipeLineGraph: PipeLine | null | undefined = getPipeLine('default');
 
-    return await processWithPipeLineGraph(input, defaultPipeLineGraph, options);
+    return await runGraphNode(defaultPipeLineGraph, input);
 }

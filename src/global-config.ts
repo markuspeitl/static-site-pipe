@@ -1,14 +1,16 @@
-import { PipeLine, PipeLineEntry } from "./processing-pipeline";
+import { PipeLine, PipeLinesDict } from "./pipeline-processing";
 import { NullableArray, NullableString } from "./utils/util";
 
 export interface GlobalFunctions {
-    getPipeLine?(id: string): PipeLineEntry;
+    getPipeLine?(id: string): PipeLine | null;
     getNewPipeLine?(id: string): PipeLine;
     addPipeLine?(pipeLine: PipeLine, id?: string): string;
 }
 
 export interface GlobalInstances {
     fsProvider?: IResourceProvider;
+    pipeLinesPool?: PipeLinesDict;
+    immutablePool?: boolean;
 }
 
 export type GlobalConfig = GlobalFunctions & GlobalInstances;

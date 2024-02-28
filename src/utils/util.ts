@@ -121,7 +121,7 @@ export function getKeyFromDict(dict: Object, key?: string): any | undefined {
     return currentLevelDict;
 }
 
-export function getArrayFrom<ItemType>(item?: ItemType | ItemType[]): ItemType[] {
+export function getArrayFrom<ItemType>(item?: ItemType | ItemType[] | null): ItemType[] {
     if (!item) {
         return [];
     }

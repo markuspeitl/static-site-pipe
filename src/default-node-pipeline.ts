@@ -1,15 +1,12 @@
-import { PipeLine, processWithPipeLineGraph } from "./processing-pipeline";
-
-
-
 import * as path from 'path';
 //import * as fs from 'fs';
 import fs from "fs";
 import { NullableString, ArrayAndNull, NullableArray } from './utils/util';
 import { IResourceProvider, GlobalConfig } from './global-config';
-import { defaultPipeLineGraphEdges, initConnectPipeLineGraph } from "./default-pipeline";
-import { GraphEdges } from "./pipeline-connect";
+import { PipeGraphEdges, defaultPipeLineGraphEdges, initializeDefaultPipeLines } from "./default-pipeline";
 import { isFilePath, nodeExists, tryReadFile, walk } from "./utils/node-util";
+import { PipeLine, PipeLinesDict } from './pipeline-processing';
+import { PipeLineInfo, createPipeLineGraph } from './pipeline-connect';
 //Apparently a bit more stable fs implementation: https://www.npmjs.com/package/graceful-fs
 //var fs = require('graceful-fs')
 //string to slug
@@ -184,14 +181,17 @@ export function getDefaultNodeConfig(): GlobalConfig {
     return globalConfig;
 }
 
-export function getDefaultNodePipeLineGraph(globalConfig?: GlobalConfig): PipeLine | null {
+export function getDefaultNodePipeLineGraph(globalConfig?: GlobalConfig): PipeLineInfo | null {
     if (!globalConfig) {
         globalConfig = {};
     }
     Object.assign(getDefaultNodeConfig(), globalConfig);
 
-    const defaultGraphEdges: GraphEdges = defaultPipeLineGraphEdges;
-    return initConnectPipeLineGraph(defaultGraphEdges, globalConfig);
+    const defaultGraphEdges: PipeGraphEdges = defaultPipeLineGraphEdges;
+
+    const pipeLinesPool: PipeLinesDict = initializeDefaultPipeLines(globalConfig);
+
+    return createPipeLineGraph('default', defaultGraphEdges, pipeLinesPool, globalConfig);
 
     //let graph = options.graph;
     //const defaultPipeLineGraph: PipeLineGraph | null = getDefaultPipeLineGraph(options);
