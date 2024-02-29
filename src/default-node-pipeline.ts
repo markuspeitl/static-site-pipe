@@ -3,10 +3,10 @@ import * as path from 'path';
 import fs from "fs";
 import { NullableString, ArrayAndNull, NullableArray } from './utils/util';
 import { IResourceProvider, GlobalConfig } from './global-config';
-import { PipeGraphEdges, defaultPipeLineGraphEdges, initializeDefaultPipeLines } from "./default-pipeline";
+import { defaultPipeLineGraphEdges, initializeDefaultPipeLines } from "./default-pipeline";
 import { isFilePath, nodeExists, tryReadFile, walk } from "./utils/node-util";
 import { PipeLine, PipeLinesDict } from './pipeline-processing';
-import { PipeLineInfo, createPipeLineGraph } from './pipeline-connect';
+import { PipeGraphEdges, PipeLineInfo, createPipeLineGraph } from './pipeline-connect';
 //Apparently a bit more stable fs implementation: https://www.npmjs.com/package/graceful-fs
 //var fs = require('graceful-fs')
 //string to slug

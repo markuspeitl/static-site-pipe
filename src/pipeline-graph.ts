@@ -1,20 +1,45 @@
-import { PipeLine, PipeLineProcessor } from "./pipeline-processing";
-import { getArrayFrom } from "./utils/util";
+import { IConnectAble } from "./pipeline-connect";
+import { PipeLine } from "./pipeline-processing";
+import { ItemArrayOrNull, getArrayFrom } from "./utils/util";
 
-export interface IGraphNode extends PipeLineProcessor<any> {
+/*export interface IGraphNode {
+    id: string;
     next?: IGraphNode[] | null | undefined;
-}
+    previous?: IGraphNode[] | null | undefined;
+}*/
 
-export interface IEndNode extends IGraphNode {
+export type ISameConnectAble = IConnectAble<ISameConnectAble>;
+
+export interface IEndNode extends ISameConnectAble {
     data: any | any[] | null;
 }
 
-export interface IScopedNode extends IGraphNode {
-    start: IGraphNode | null;
-    end: IGraphNode | null;
+export interface IScopedNode extends ISameConnectAble {
+    start: ISameConnectAble;
+    end: ISameConnectAble;
 }
-export abstract class GraphNode implements IGraphNode {
-    next?: IGraphNode[] | null | undefined = [];
+
+/*export interface IHierarchicalGraphNode extends IGraphNode {
+    parent: IHierarchicalGraphNode;
+}*/
+
+export interface IProcessingNode<InputType> extends ISameConnectAble {
+    //perform processing operations on data with this stage
+    process(input: InputType): Promise<InputType>;
+
+    //Basically an entry guard (rejects the input if it does not match)
+    isTargetOf?(input: InputType): Promise<boolean>;
+}
+
+export abstract class GraphNode implements ISameConnectAble, IProcessingNode<any> {
+    id: string;
+    next?: ItemArrayOrNull<ISameConnectAble> = [];
+    previous?: ItemArrayOrNull<ISameConnectAble> = [];
+
+    constructor (id: string) {
+        this.id = id;
+    }
+
     async process(input: any): Promise<any> {
         return input;
     }
@@ -23,11 +48,10 @@ export abstract class GraphNode implements IGraphNode {
     };
 }
 
-
 export class EndNode extends GraphNode {
     data: any | any[] | null = null;
-    constructor (parentNode: IScopedNode) {
-        super();
+    constructor (id: string, parentNode: IScopedNode) {
+        super(id);
         /*if (parentNode.next) {
             this.next = parentNode.next;
         }*/
@@ -49,8 +73,8 @@ export class EndNode extends GraphNode {
 }
 export class StartNode extends GraphNode {
     //next?: GraphNode | null | undefined;
-    constructor (parentNode: IScopedNode) {
-        super();
+    constructor (id: string, parentNode: IScopedNode) {
+        super(id);
         if (parentNode.next) {
             this.next = parentNode.next;
         }
@@ -80,6 +104,14 @@ async function canProcess(node, inputData: any) {
 }
 
 
+
+export async function runNodeProcessFn(processingNode: ISameConnectAble | IProcessingNode<any>, inputData: any): Promise<any> {
+    if ((processingNode as IProcessingNode<any>).process) {
+        return (processingNode as IProcessingNode<any>).process(inputData);
+    }
+    return inputData;
+}
+
 //3 types of node:
 //GraphNode: Common node -> can process input data and has a 'next' property pointing to the nodes it is connected to
 //EndNode: Acts as a common node, but has a data property in which processed data passing through it is collected
@@ -88,14 +120,14 @@ async function canProcess(node, inputData: any) {
 
 //Nodes that do not have graph items do not need a 'start' or 'end' node
 //Though for consistencies sake insert (and optimize later)
-export async function runThroughNodeChain(pipeLine: GraphNode, inputData: any) {
-    let processedInput: any = pipeLine.process(inputData);
+export async function runThroughNodeChain(pipeLineNode: ISameConnectAble, inputData: any) {
+    let processedInput = runNodeProcessFn(pipeLineNode, inputData);
 
-    if (isScopeNode(pipeLine)) {
-        processedInput = runGraphNode(pipeLine as IScopedNode, processedInput);
+    if (isScopeNode(pipeLineNode)) {
+        processedInput = runGraphNode(pipeLineNode as IProcessingNode<any>, processedInput);
     }
 
-    const nextPipeLineTargets: IGraphNode[] | undefined = (getArrayFrom(pipeLine.next) as IGraphNode[]);
+    const nextPipeLineTargets: ISameConnectAble[] | undefined = (getArrayFrom(pipeLineNode.next) as ISameConnectAble[]);
     //const nodeOutput: any[] = [];
     if (nextPipeLineTargets) {
         for (const targetNode of nextPipeLineTargets) {
@@ -107,7 +139,7 @@ export async function runThroughNodeChain(pipeLine: GraphNode, inputData: any) {
     }
 }
 
-export async function runGraphNode(pipeLineNode: GraphNode, inputData: any) {
+export async function runGraphNode<InputType>(pipeLineNode: ISameConnectAble, inputData: InputType): Promise<any> {
 
     /*if (isEndNode(pipeLineNode)) {
         return (pipeLineNode as EndNode).data;
@@ -122,7 +154,9 @@ export async function runGraphNode(pipeLineNode: GraphNode, inputData: any) {
     }
 
     const node = pipeLineNode as IScopedNode;
-    const processedInput = await node.process(inputData);
+
+
+    let processedInput = runNodeProcessFn(pipeLineNode, inputData);
 
     if (!node.next) {
         return processedInput;
@@ -136,7 +170,7 @@ export async function runGraphNode(pipeLineNode: GraphNode, inputData: any) {
     }
 
     //Split open path between endNode and the next Node
-    const nextAfterEndNodes: IGraphNode[] | null | undefined = endNode?.next;
+    const nextAfterEndNodes: ItemArrayOrNull<ISameConnectAble> = endNode?.next;
 
     if (nextAfterEndNodes) {
         endNode.next = null;

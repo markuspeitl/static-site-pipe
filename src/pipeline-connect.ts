@@ -1,9 +1,46 @@
-import { ChainGraphEdges, ChainItems, GraphMeta, LinkGraphValue, NodeReferences, PipeGraphEdges } from "./default-pipeline";
 import { GlobalConfig, GlobalFunctions } from "./global-config";
-import { IGraphNode } from "./pipeline-graph";
+import { ISameConnectAble } from "./pipeline-graph";
 import { PipeLine, PipeLinesDict } from './pipeline-processing';
 import { getAllPipeLines, getNewPipeLine } from "./pipeline-provider";
-import { Nullable, addItemMakeArray, getArrayFrom } from './utils/util';
+import { ItemArrayOrNull, Nullable, addItemMakeArray, getArrayFrom } from './utils/util';
+
+
+export type NodeReferences = ItemArrayOrNull<string>;
+export type GraphTypeOptions = 'branch' | 'distribute' | 'dist' | 'first' | 'last' | null | undefined;
+export type NextReferenceOption = 'default' | 'sibling' | 'exit' | 'parent' | 'null' | string | undefined;
+
+
+export interface IConnectAble<ConnType> {
+    id?: string;
+    next?: ItemArrayOrNull<ConnType>;
+    previous?: ItemArrayOrNull<ConnType>;
+}
+
+export interface IWrapConnect<ConnType> extends IConnectAble<ConnType> {
+    parent?: IWrapConnect<ConnType>;
+}
+export type ISameWrapConnect = IWrapConnect<ISameWrapConnect>;
+
+export interface GraphMeta<ConnType> extends IConnectAble<ConnType> {
+    start?: NodeReferences;
+    type?: GraphTypeOptions;
+
+    //Non data property --> computed
+    parent?: PipeGraphEdges;
+}
+
+export type LinkGraphValue = string | PipeGraphEdges | ChainGraphEdges;
+
+export interface PipeGraphEdges extends GraphMeta<string> {
+    graph?: PipeGraphEdgesDict;
+}
+export type ChainItems = Array<LinkGraphValue>;
+export interface ChainGraphEdges extends GraphMeta<string> {
+    items?: ChainItems;
+}
+export type PipeGraphEdgesDict = {
+    [ pipeLineId: string ]: LinkGraphValue;
+};
 
 /*export interface GraphEdges {
     subchain?: GraphSubEdgesDict;
@@ -32,9 +69,13 @@ export function iterateDictConnect(edgesDict: GraphSubEdgesDict | null | undefin
 
 
 function resolveStartTargetKeys(pipeLineGraphEdges: PipeGraphEdges) {
-    if (!pipeLineGraphEdges.graph) {
+    /*if (!pipeLineGraphEdges.graph) {
         pipeLineGraphEdges.graph = {};
+    }*/
+    if (!pipeLineGraphEdges.graph) {
+        return [];
     }
+
     const subGraphKeys: string[] = Object.keys(pipeLineGraphEdges.graph);
 
     if (!pipeLineGraphEdges.type) {
@@ -49,7 +90,7 @@ function resolveStartTargetKeys(pipeLineGraphEdges: PipeGraphEdges) {
         case 'last':
             return [ subGraphKeys[ subGraphKeys.length - 1 ] ];
     }
-    return [];
+    return [ subGraphKeys[ 0 ] ];
 }
 
 function getGraphPath(node?: { parent?: { id?: string; }; }): string {
@@ -118,19 +159,55 @@ export function createResolveStartEndEdgesFor(graphEdges: PipeGraphEdges): void 
 
 
         //Does not happen if already set (-> user responsible for start and end node management then)
-        createVirtualNode(graphEdges, 'start', graphEdges.start);
-        createVirtualNode(graphEdges, 'end', graphEdges.next);
-        delete graphEdges.start;
+
+        const previousNext = graphEdges.next;
+
+        if (graphEdges.graph && !graphEdges.graph.start) {
+            //createVirtualNode(graphEdges, 'start', graphEdges.start);
+            graphEdges.graph.start = {
+                next: graphEdges.start
+            };
+            delete graphEdges.start;
+            graphEdges.next = getGraphPath(graphEdges) + '.start';
+        }
+        if (graphEdges.graph && !graphEdges.graph.end) {
+            //createVirtualNode(graphEdges, 'start', graphEdges.start);
+
+            let nextOfEnd: string[] | null = null;
+            if (previousNext && previousNext.length > 0) {
+                nextOfEnd = previousNext;
+            }
+            else {
+                const parentPath = getGraphPath(graphEdges.parent) + '.end';
+                nextOfEnd = [ parentPath ];
+            }
+
+            graphEdges.graph.end = {
+                //next: getGraphPath(graphEdges) + '.end'
+                next: previousNext
+            };
+
+            //delete graphEdges.start;
+        }
+
+        /*createVirtualNode(graphEdges, 'end', graphEdges.next);
+
         //delete graphEdges.next;
-        graphEdges.next = graphEdges.id + '.start';
+        graphEdges.next = getGraphPath(graphEdges) + '.start';
+        //addItemMakeArray(graphEdges, 'next', getGraphPath(graphEdges) + '.start');
+
+        if (graphEdges.graph.end) {
+            //addItemMakeArray(graphEdges.graph.end, 'next', getGraphPath(graphEdges) + '.end');
+            (graphEdges.graph.end as GraphMeta<string>).next = getGraphPath(graphEdges) + '.end';
+        }*/
     }
 }
 
-export function resolveGraphEdges(pipeLineGraphEdges: PipeGraphEdges, parentGraphInfo: LinkGraphValue | null) {
+export function resolveGraphEdges(pipeLineGraphEdges: PipeGraphEdges) {
 
-    if (!pipeLineGraphEdges.graph) {
+    /*if (!pipeLineGraphEdges.graph) {
         pipeLineGraphEdges.graph = {};
-    }
+    }*/
 
     createResolveStartEndEdgesFor(pipeLineGraphEdges);
 
@@ -163,24 +240,51 @@ export function chainItemsToNodes(items: ChainItems) {
     return items.map((item: LinkGraphValue) => getGraphEdges(item));
 }
 
+export function linkGraphItemRefs(source: ISameWrapConnect, sink: ISameWrapConnect): void {
+    addItemMakeArray(source, 'next', sink);
+    addItemMakeArray(sink, 'previous', source);
+}
+
+export function linkGraphItemConnIds(source: IWrapConnect<string>, sink: IWrapConnect<string>): void {
+
+    let nextPath = sink.id;
+    if (sink.parent) {
+        nextPath = getGraphPath(sink);
+    }
+
+    let previousPath = source.id;
+    if (source.parent) {
+        previousPath = getGraphPath(source);
+    }
+
+    addItemMakeArray(source, 'next', nextPath);
+    addItemMakeArray(sink, 'previous', previousPath);
+}
 
 export function resolveChainToGraph(graphEdges: ChainGraphEdges): PipeGraphEdges {
     if (graphEdges && graphEdges.items) {
 
         //Convert items to pipline graph items
         const chainItemsAsGraphEdges: PipeGraphEdges[] | null = chainItemsToNodes(graphEdges.items);
+        delete graphEdges.items;
+
         if (!chainItemsAsGraphEdges) {
             return graphEdges;
         }
 
-        const chainItemsIdPaths = chainItemsAsGraphEdges.map((graphEdges: PipeGraphEdges) => getGraphPath(graphEdges));
+        chainItemsAsGraphEdges.forEach((itemGraphEdges: PipeGraphEdges) => itemGraphEdges.parent = graphEdges);
+        const chainItemsIdPaths = chainItemsAsGraphEdges.map((itemGraphEdges: PipeGraphEdges) => getGraphPath(itemGraphEdges)); //
 
         for (let i = 1; i < chainItemsAsGraphEdges.length; i++) {
-            const lastGraphItem = chainItemsAsGraphEdges[ i - 1 ];
+            /*const lastGraphItem = chainItemsAsGraphEdges[ i - 1 ];
             const curItemPath = chainItemsIdPaths[ i ];
-            addItemMakeArray(lastGraphItem, 'next', curItemPath);
+            addItemMakeArray(lastGraphItem, 'next', curItemPath);*/
+
+            linkGraphItemConnIds(chainItemsAsGraphEdges[ i - 1 ], chainItemsAsGraphEdges[ i ]);
         }
-        delete graphEdges.items;
+        addItemMakeArray(chainItemsAsGraphEdges.at(-1), 'next', getGraphPath(graphEdges) + ".end");
+        //addItemMakeArray(chainItemsAsGraphEdges.at(-1), 'next', getGraphPath(graphEdges) + ".end");
+        //addItemMakeArray(chainItemsAsGraphEdges.at(-1), 'next', getGraphPath(graphEdges) + ".next");
 
         const pipeGraphEdges = (graphEdges as PipeGraphEdges);
 
@@ -189,7 +293,13 @@ export function resolveChainToGraph(graphEdges: ChainGraphEdges): PipeGraphEdges
         }
 
         for (const [ index, graphNodePath ] of chainItemsIdPaths.entries()) {
-            pipeGraphEdges.graph[ graphNodePath ] = chainItemsAsGraphEdges[ index ];
+
+            if (!pipeGraphEdges.graph[ graphNodePath ]) {
+                if (chainItemsAsGraphEdges.at(index)?.id) {
+                    pipeGraphEdges.graph[ chainItemsAsGraphEdges.at(index)?.id as string ] = chainItemsAsGraphEdges[ index ];
+                }
+
+            }
         }
     }
 
@@ -209,7 +319,7 @@ function resolveSubgraphIds(resolvedGraph: PipeGraphEdges, namespace: string = "
         }
 
         for (const subGraphKey in resolvedGraph.graph) {
-            const subGraph = resolvedGraph.graph[ subGraphKey ] as GraphMeta;
+            const subGraph = resolvedGraph.graph[ subGraphKey ] as GraphMeta<string>;
             if (!subGraph.id) {
                 subGraph.id = namespacePrefix + subGraphKey;
             }
@@ -221,19 +331,22 @@ function resolveSubgraphIds(resolvedGraph: PipeGraphEdges, namespace: string = "
 function processSubGraphs(resolvedGraph: PipeGraphEdges, processingFn: any): void {
     if (resolvedGraph.graph) {
         for (const subGraphKey in resolvedGraph.graph) {
-            const subGraph = resolvedGraph.graph[ subGraphKey ] as GraphMeta;
+            const subGraph = resolvedGraph.graph[ subGraphKey ] as GraphMeta<string>;
 
-            subGraph.parent = resolvedGraph;
+            if (subGraph) {
+                subGraph.parent = resolvedGraph;
+                subGraph.id = subGraphKey;
 
-            processingFn(subGraph, subGraphKey, resolvedGraph);
+                processingFn(subGraph, subGraphKey, resolvedGraph);
+            }
         }
     }
 }
 
-function resolveEdgesOverwrite(key: string, subGraph: PipeGraphEdges, parentGraph: PipeGraphEdges) {
-    const resolvedSubgraph = resolveImplicitEdges(subGraph, parentGraph);
-    if (resolvedSubgraph && parentGraph.graph) {
-        parentGraph.graph[ key ] = resolvedSubgraph;
+function resolveEdgesOverwrite(subGraph: PipeGraphEdges, key: string) {
+    const resolvedSubgraph = resolveImplicitEdges(subGraph);
+    if (resolvedSubgraph && resolvedSubgraph.parent && resolvedSubgraph.parent.graph && subGraph.id) {
+        resolvedSubgraph.parent.graph[ subGraph.id ] = resolvedSubgraph;
     }
 }
 
@@ -241,7 +354,7 @@ function resolveEdgesOverwrite(key: string, subGraph: PipeGraphEdges, parentGrap
     processSubGraphs(resolvedGraph, resolveEdgesOverwrite);
 }*/
 
-export function resolveImplicitEdges(pipeLineGraphEdges: LinkGraphValue, parentGraphInfo: LinkGraphValue | null): PipeGraphEdges | null {
+export function resolveImplicitEdges(pipeLineGraphEdges: LinkGraphValue): PipeGraphEdges | null {
     if (!pipeLineGraphEdges) {
         return null;
     }
@@ -249,12 +362,16 @@ export function resolveImplicitEdges(pipeLineGraphEdges: LinkGraphValue, parentG
         return getGraphEdges(pipeLineGraphEdges);
     }
 
-    resolveSpecialElements(pipeLineGraphEdges as ChainGraphEdges);
-    resolveGraphEdges(pipeLineGraphEdges as PipeGraphEdges, parentGraphInfo);
+    let chainResolvedGraph: PipeGraphEdges = resolveSpecialElements(pipeLineGraphEdges as ChainGraphEdges);
+    chainResolvedGraph = resolveGraphEdges(chainResolvedGraph as PipeGraphEdges);
+    //let chainResolvedGraph = pipeLineGraphEdges;
 
     //resolveSubgraphIds(resolvedGraph, (pipeLineGraphEdges as GraphMeta).id);
-    resolveSubgraphIds(pipeLineGraphEdges);
-    processSubGraphs(pipeLineGraphEdges, resolveEdgesOverwrite);
+    //resolveSubgraphIds(pipeLineGraphEdges);
+    if ((chainResolvedGraph as PipeGraphEdges).graph) {
+        processSubGraphs(chainResolvedGraph, resolveEdgesOverwrite);
+    }
+
     //resolveSubgraphs(pipeLineGraphEdges);
 
     return pipeLineGraphEdges;
@@ -427,17 +544,13 @@ export function cvtEdgesToLinkedGraph(id: string, graphEdges: PipeGraphEdges, pi
     }*/
     cvtIdsToPipelineRefs(graphEdges, currentPipeLine, 'next', pipeLinesPool);
 
-    function connectSubGraphs(subGraph: PipeGraphEdges, key: string, parentGraph: PipeGraphEdges) {
+    /*function connectSubGraphs(subGraph: PipeGraphEdges, key: string, parentGraph: PipeGraphEdges) {
         //const currentPipeLine: PipeLine = getPipeLine(key);
 
         const currentNodePath = getGraphPath(subGraph);
         createPipeLineGraph(currentNodePath, subGraph, pipeLinesPool, globalConfig);
-        /*const resolvedSubgraph = resolveImplicitEdges(subGraph, parentGraph);
-        if (resolvedSubgraph && parentGraph.graph) {
-            parentGraph.graph[ key ] = resolvedSubgraph;
-        }*/
     }
-    processSubGraphs(graphEdges, connectSubGraphs);
+    processSubGraphs(graphEdges, connectSubGraphs);*/
 
     const pipeLineInfo: PipeLineInfo = {
         entry: currentPipeLine,
@@ -468,8 +581,10 @@ export function createPipeLineGraph(id: string, graphEdges: PipeGraphEdges, pipe
     }
 
     const currentPipeLine: PipeLine = pipeLinesPool[ id ];
+    currentPipeLine.id = id;
+    graphEdges.id = id;
 
-    const explicitEdgesGraph: PipeGraphEdges | null = resolveImplicitEdges(graphEdges, null);
+    const explicitEdgesGraph: PipeGraphEdges | null = resolveImplicitEdges(graphEdges);
     if (!explicitEdgesGraph) {
         return null;
     }
@@ -480,5 +595,6 @@ export function createPipeLineGraph(id: string, graphEdges: PipeGraphEdges, pipe
         pipeLineInfo.origEdges = originalGraphEdges;
     }
 
-    return structuredClone(pipeLineInfo);
+    return pipeLineInfo;
+    //return structuredClone(pipeLineInfo);
 }

@@ -1,0 +1,122 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "runtimeVersion": "20.9.0",
+            "request": "launch",
+            "name": "debug test file",
+            "runtimeExecutable": "node",
+            "runtimeArgs": [
+                "--require",
+                "ts-node/register",
+                "--enable-source-maps",
+                //"--project",
+                //"${workspaceRoot}/site/_includes/components/tsconfig.json",
+            ],
+            "cwd": "${workspaceRoot}",
+            "args": [
+                "${workspaceRoot}/src/example/test.ts",
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "sourceMaps": true,
+            "env": {
+                "TS_NODE_PROJECT": "${workspaceRoot}/tsconfig.json",
+                "NODE_OPTIONS": "--enable-source-maps",
+            }
+        },
+        {
+            "type": "node",
+            "runtimeVersion": "20.9.0",
+            "request": "launch",
+            "name": "eleventy build: tsnode debug",
+            "runtimeExecutable": "node",
+            "runtimeArgs": [
+                "--require",
+                "ts-node/register",
+                "--enable-source-maps",
+                //"--project",
+                //"${workspaceRoot}/site/_includes/components/tsconfig.json",
+            ],
+            "cwd": "${workspaceRoot}/site",
+            "args": [
+                //"--project",
+                //"${workspaceRoot}/site/_includes/components/tsconfig.json",
+                //"--respawn",
+                "${workspaceRoot}/node_modules/@11ty/eleventy/cmd.js",
+                "--config=${workspaceRoot}/config.eleventy.js",
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "sourceMaps": true,
+            "env": {
+                "TS_NODE_PROJECT": "${workspaceRoot}/site/_includes/components/tsconfig.json",
+                "NODE_OPTIONS": "--enable-source-maps",
+            }
+        },
+        {
+            "type": "node",
+            "runtimeVersion": "20.9.0",
+            "request": "launch",
+            "name": "Launch + auto-restart",
+            "runtimeExecutable": "node",
+            "args": [
+                "${workspaceRoot}/node_modules/ts-node-dev/lib/bin.js",
+                "--project",
+                "${workspaceRoot}/site/components/tsconfig.json",
+                "--respawn",
+                "${workspaceRoot}/site/components/header.ts"
+            ],
+            "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "type": "node",
+            "runtimeVersion": "20.9.0",
+            "name": "npm run build",
+            "request": "launch",
+            "runtimeArgs": [
+                "run",
+                "build"
+            ],
+            "runtimeExecutable": "npm",
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules"
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "sourceMaps": true,
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}"
+            ],
+            "env": {
+                "NODE_OPTIONS": "--enable-source-maps"
+            }
+        },
+        {
+            "type": "node",
+            "runtimeVersion": "20.9.0",
+            "name": "npm run dev",
+            "request": "launch",
+            "runtimeArgs": [
+                "run",
+                "dev"
+            ],
+            "runtimeExecutable": "npm",
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules"
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "sourceMaps": true,
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}"
+            ],
+            "env": {
+                "TS_NODE_PROJECT": "${workspaceRoot}/site/_includes/components/tsconfig.json",
+                "NODE_OPTIONS": "--require ts-node/register --enable-source-maps",
+            }
+        }
+    ]
+}

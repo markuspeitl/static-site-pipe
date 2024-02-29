@@ -3,7 +3,7 @@ import { addPipeLine, getAllPipeLines, getNewPipeLine, getPipeLine, getPipeLineF
 import { PipeLine, PipeLinesDict } from './pipeline-processing';
 import { ItemArrayOrNull, NullableArray, NullableString } from './utils/util';
 import { runGraphNode } from './pipeline-graph';
-import { createPipeLineGraph, PipeLineInfo } from './pipeline-connect';
+import { ChainItems, createPipeLineGraph, PipeGraphEdges, PipeLineInfo } from './pipeline-connect';
 
 const chainExplicitSample = {
     source: 'pipe1',
@@ -68,32 +68,6 @@ export interface PipeGraphEdges extends GraphMeta {
 }
 export type GraphSubEdgesDict = Record<string, GraphEdges | null>;*/
 
-export type NodeReferences = ItemArrayOrNull<string>;
-export type GraphTypeOptions = 'branch' | 'distribute' | 'dist' | 'first' | 'last' | null | undefined;
-export type NextReferenceOption = 'default' | 'sibling' | 'exit' | 'parent' | 'null' | string | undefined;
-
-export interface GraphMeta {
-    id?: string;
-    start?: NodeReferences;
-    type?: GraphTypeOptions;
-    next?: NodeReferences;
-
-    //Non data property --> computed
-    parent?: PipeGraphEdges;
-}
-
-export type LinkGraphValue = string | PipeGraphEdges | ChainGraphEdges;
-
-export interface PipeGraphEdges extends GraphMeta {
-    graph?: PipeGraphEdgesDict;
-}
-export type ChainItems = Array<LinkGraphValue>;
-export interface ChainGraphEdges extends GraphMeta {
-    items?: ChainItems;
-}
-export type PipeGraphEdgesDict = {
-    [ pipeLineId: string ]: LinkGraphValue;
-};
 
 
 function chainEdges(items: ChainItems, nextAfter?: string | string[]) {
@@ -317,30 +291,27 @@ function resolvePipeLineFunctions(pool: Record<string, PipeOrFn>): PipeLinesDict
 }
 
 function createSimplePipeLine(id: string, isTargetOf: (input: any) => Promise<boolean>, chainStagesPipePool: Record<string, PipeOrFn>, globalConfig: GlobalConfig): PipeLine | null {
+    //const pipeLine: PipeLine = getNewPipeLine(id);
 
-    //const getPipeLine: (id: string) => PipeLine = globalConfig.getPipeLine;
-
-    if (globalConfig.getNewPipeLine) {
-        const getNewPipeLine: (id: string) => PipeLine = globalConfig.getNewPipeLine;
-
-        const pipeLine: PipeLine = getNewPipeLine(id);
-
-        const graphEdges: PipeGraphEdges = {
-            graph: {
-                chain: {
-                    items: [
-                        ...Object.keys(chainStagesPipePool)
-                    ]
-                }
+    const graphEdges: PipeGraphEdges = {
+        graph: {
+            chain: {
+                items: [
+                    ...Object.keys(chainStagesPipePool)
+                ]
             }
-        };
-
-        const pipeLinePool: PipeLinesDict = resolvePipeLineFunctions(chainStagesPipePool);
-
-        const pipeLineInfo: PipeLineInfo | null = createPipeLineGraph(id, graphEdges, pipeLinePool, globalConfig);
-        if (pipeLineInfo) {
-            return pipeLineInfo?.entry;
         }
+    };
+
+    const pipeLinePool: PipeLinesDict = resolvePipeLineFunctions(chainStagesPipePool);
+
+    const pipeLine: PipeLine = getNewPipeLine(id);
+    pipeLinePool[ id ] = pipeLine;
+    pipeLine.isTargetOf = isTargetOf;
+
+    const pipeLineInfo: PipeLineInfo | null = createPipeLineGraph(id, graphEdges, pipeLinePool, globalConfig);
+    if (pipeLineInfo) {
+        return pipeLineInfo?.entry;
     }
 
     return null;

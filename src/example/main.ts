@@ -54,7 +54,7 @@ function customizeGraph(graph: PipeLine): PipeLine {
 }
 
 const globalConfig: GlobalConfig = getDefaultNodeConfig();
-const defaultPipeLineGraph: PipeLine = getDefaultNodePipeLineGraph(globalConfig);
+const defaultPipeLineGraph: PipeLine | null = getDefaultNodePipeLineGraph(globalConfig);
 const customPipeLineGraph = customizeGraph(defaultPipeLineGraph);
 injectPipeLine(customPipeLineGraph, 'walk', 'directcustomstage');
 

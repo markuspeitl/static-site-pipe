@@ -3,12 +3,6 @@ import { ArgumentParser } from 'argparse';
 export interface IContainerGenerator {
     render: (inputPath: string) => string;
 }
-export interface PipeLine {
-    getStages(): IPipeLineStage[];
-}
-
-
-
 
 function main() {
     const parser = new ArgumentParser({

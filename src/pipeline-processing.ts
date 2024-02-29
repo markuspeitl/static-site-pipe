@@ -1,6 +1,5 @@
-import { IGraphNode, runGraphNode } from './pipeline-graph';
-import { getNewPipeLine } from './pipeline-provider';
-import { getArrayFrom, ItemArrayOrNull, mergePropsToArray, multiplyIfArrayAsync, Nullable, SingleOrArray } from './utils/util';
+import { GraphNode, runGraphNode } from './pipeline-graph';
+import { getArrayFrom } from './utils/util';
 
 export type ProcessingFunction<InputType> = (input: InputType) => Promise<InputType>;
 
@@ -23,8 +22,8 @@ export type PipeLinesDict<InputType, OutputType> = Record<string, PipeLine<Input
 
 
 
-export interface PipeLine extends IGraphNode {
-    id?: string;
+export interface PipeLine extends GraphNode {
+    //id?: string;
     namespace?: Record<string, PipeLine>;
     //start?: SingleOrArray<PipeLine>;
     //next?: SingleOrArray<PipeLine>;
